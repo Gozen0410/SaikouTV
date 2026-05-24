@@ -136,31 +136,37 @@ class Miruro : AnimeParser() {
     }
 
     private suspend fun pipe(path: String, query: JsonObject): ByteArray {
-        val request = JsonObject(mapOf(
-            "path" to JsonPrimitive(path),
-            "method" to JsonPrimitive("GET"),
-            "query" to query,
-            "body" to JsonNull,
-            "version" to JsonPrimitive("0.2.0")
-        ))
-        val e = Base64.getUrlEncoder().withoutPadding().encodeToString(
-            Mapper.json.encodeToString(request).encodeToByteArray()
-        )
-        val respText = client.get("$hostUrl/api/secure/pipe?e=$e", mapOf("referer" to hostUrl)).text
-        val decoded = try {
-            Base64.getUrlDecoder().decode(respText)
-        } catch (_: IllegalArgumentException) {
-            return@pipe ByteArray(0)
+        return try {
+            val request = JsonObject(mapOf(
+                "path" to JsonPrimitive(path),
+                "method" to JsonPrimitive("GET"),
+                "query" to query,
+                "body" to JsonNull,
+                "version" to JsonPrimitive("0.2.0")
+            ))
+            val e = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                Mapper.json.encodeToString(request).encodeToByteArray()
+            )
+            val respText = client.get("$hostUrl/api/secure/pipe?e=$e", mapOf("referer" to hostUrl)).text
+            val decoded = Base64.getUrlDecoder().decode(respText)
+            val xored = ByteArray(decoded.size)
+            for (i in decoded.indices) {
+                val b = decoded[i].toInt() and 0xFF
+                val k = PIPE_KEY[i % PIPE_KEY.size].toInt() and 0xFF
+                xored[i] = (b xor k).toByte()
+            }
+            val gzip = GZIPInputStream(ByteArrayInputStream(xored))
+            val bos = ByteArrayOutputStream()
+            val buf = ByteArray(4096)
+            var len: Int
+            while (gzip.read(buf).also { len = it } != -1) {
+                bos.write(buf, 0, len)
+            }
+            gzip.close()
+            bos.toByteArray()
+        } catch (_: Exception) {
+            ByteArray(0)
         }
-        val xored = ByteArray(decoded.size)
-        for (i in decoded.indices) {
-            val b = decoded[i].toInt() and 0xFF
-            val k = PIPE_KEY[i % PIPE_KEY.size].toInt() and 0xFF
-            xored[i] = (b xor k).toByte()
-        }
-        val bos = ByteArrayOutputStream()
-        GZIPInputStream(ByteArrayInputStream(xored)).transferTo(bos)
-        return bos.toByteArray()
     }
 
     @Serializable
