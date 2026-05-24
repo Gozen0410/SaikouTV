@@ -137,17 +137,40 @@ class AnimePahe : AnimeParser() {
         }
 
         private fun getAndUnpack(string: String): String {
-            val packed = Regex("""eval\(function\(p,a,c,k,e,.*\)\)""").find(string)?.value
-            return JsUnpacker(packed).unpack() ?: string
+            val startRegex = Regex("""eval\(function\(p,a,c,k,e,[rd]\)""")
+            val sb = StringBuilder()
+            var searchFrom = 0
+            while (true) {
+                val match = startRegex.find(string, searchFrom) ?: break
+                val start = match.range.first
+                var depth = 0
+                var end = string.length
+                for (i in start until string.length) {
+                    when (string[i]) {
+                        '(' -> depth++
+                        ')' -> { depth--; if (depth == 0) { end = i; break } }
+                    }
+                }
+                val block = string.substring(start, end + 1)
+                val unpacked = JsUnpacker(block).unpack()
+                if (unpacked != null) sb.append(unpacked).append('\n')
+                searchFrom = end + 1
+            }
+            return sb.toString().ifEmpty { string }
         }
 
         override suspend fun extract(): VideoContainer {
             return tryWithSuspend {
                 val embedUrl = server.embed.url
+                val kwikHeaders = mapOf(
+                    "referer" to "https://animepahe.pw/",
+                    "user-agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                    "cookie" to "__ddg2_=1234567890"
+                )
 
                 if ("kwik" in embedUrl) {
                     // Kwik: deobfuscate JS script + regex for m3u8 (primary)
-                    val doc = client.get(embedUrl, referer = ref).document
+                    val doc = client.get(embedUrl, kwikHeaders).document
                     val script = doc.selectFirst("script:containsData(function(p,a,c,k,e,d))")?.data()
                     if (script != null) {
                         val unpacked = getAndUnpack(script)
@@ -157,7 +180,7 @@ class AnimePahe : AnimeParser() {
                         }
                     }
                     // Fallback: old decrypt path
-                    val resp = client.get(embedUrl, referer = ref).text
+                    val resp = client.get(embedUrl, kwikHeaders).text
                     val kwikLink = redirectRegex.find(resp)?.groupValues?.getOrNull(1) ?: return@tryWithSuspend VideoContainer(emptyList())
                     val kwikRes = client.get(kwikLink)
                     val cookiesList = kwikRes.headers.toMultimap()["set-cookie"] ?: return@tryWithSuspend VideoContainer(emptyList())
@@ -181,9 +204,11 @@ class AnimePahe : AnimeParser() {
                     )
                 } else {
                     // Pahe direct: follow redirect to kwik → extract params → decrypt → POST with retry
-                    val kwikRes = client.get("$embedUrl/i", referer = "https://pahe.win/")
+                    val paheHeaders = mapOf("referer" to "https://pahe.win/", "user-agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "cookie" to "__ddg2_=1234567890")
+                    val kwikRes = client.get("$embedUrl/i", paheHeaders)
                     val kwikUrl = kwikRes.headers["location"]?.split("https://")?.lastOrNull() ?: return@tryWithSuspend VideoContainer(emptyList())
-                    val kwikPage = client.get(kwikUrl, referer = "https://kwik.cx/")
+                    val kwikPageHeaders = mapOf("referer" to "https://kwik.cx/", "user-agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "cookie" to "__ddg2_=1234567890")
+                    val kwikPage = client.get(kwikUrl, kwikPageHeaders)
                     val kwikText = kwikPage.text
                     val cookiesList = kwikPage.headers.toMultimap()["set-cookie"] ?: return@tryWithSuspend VideoContainer(emptyList())
                     val cookies = cookiesList.firstOrNull() ?: return@tryWithSuspend VideoContainer(emptyList())
