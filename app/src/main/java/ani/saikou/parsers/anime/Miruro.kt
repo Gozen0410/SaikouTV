@@ -6,8 +6,6 @@ import ani.saikou.client
 import ani.saikou.parsers.*
 import ani.saikou.tryWithSuspend
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -38,15 +36,7 @@ class Miruro : AnimeParser() {
             "type" to JsonPrimitive("ANIME"),
             "sort" to JsonPrimitive("POPULARITY_DESC")
         )))
-        val jsonStr = data.decodeToString()
-        val jsonElement = Mapper.json.parseToJsonElement(jsonStr)
-        val arr = when (jsonElement) {
-            is JsonArray -> Mapper.json.decodeFromJsonElement<List<SearchAnime>>(jsonElement)
-            else -> {
-                val response = Mapper.json.decodeFromString<SearchResponse>(jsonStr)
-                response.media ?: emptyList()
-            }
-        }
+        val arr = Mapper.json.decodeFromString<List<SearchAnime>>(data.decodeToString())
         arr.map { anime ->
             ShowResponse(
                 name = anime.title.userPreferred,
@@ -185,11 +175,6 @@ class Miruro : AnimeParser() {
         val title: SearchTitle,
         val coverImage: CoverImage,
         val episodes: Int? = null
-    )
-
-    @Serializable
-    data class SearchResponse(
-        val media: List<SearchAnime>? = null
     )
 
     @Serializable
