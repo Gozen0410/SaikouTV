@@ -307,7 +307,7 @@ class AnimexExtractor(override val server: VideoServer) : VideoExtractor() {
     override suspend fun extract(): VideoContainer {
         val extra = (server.extraData as? Animex.AnimexExtra) ?: return VideoContainer(emptyList(), emptyList())
         val typeParam = if (extra.hasDub) "dub" else "sub"
-        val providerId = extra.providerId ?: "uwu"
+        val providerId = extra.providerId ?: "beep"
 
         val sourcesRes = tryWithSuspend {
             Animex.getAnimex(
@@ -315,6 +315,7 @@ class AnimexExtractor(override val server: VideoServer) : VideoExtractor() {
             ).parsed<Animex.SourcesResponse>()
         } ?: return VideoContainer(emptyList(), emptyList())
 
+        val headers = sourcesRes.headers ?: mapOf()
         val videos = sourcesRes.sources.mapNotNull { src ->
             try {
                 val quality = when (src.quality?.lowercase()) {
@@ -327,7 +328,7 @@ class AnimexExtractor(override val server: VideoServer) : VideoExtractor() {
                 Video(
                     quality = quality,
                     format = VideoType.M3U8,
-                    url = FileUrl(src.url, sourcesRes.headers ?: mapOf()),
+                    url = FileUrl(src.url, headers),
                     extraNote = src.quality,
                 )
             } catch (_: Exception) {
@@ -345,7 +346,7 @@ class AnimexExtractor(override val server: VideoServer) : VideoExtractor() {
                 }
                 Subtitle(
                     language = track.label ?: track.lang ?: "English",
-                    url = FileUrl(track.url, sourcesRes.headers ?: mapOf()),
+                    url = FileUrl(track.url, headers),
                     type = type,
                 )
             } catch (_: Exception) {
