@@ -7,6 +7,7 @@ import ani.saikou.parsers.AnimeParser
 import ani.saikou.parsers.Episode
 import ani.saikou.parsers.ShowResponse
 import ani.saikou.parsers.Subtitle
+import ani.saikou.parsers.SubtitleType
 import com.lagradost.nicehttp.NiceResponse
 import kotlinx.coroutines.delay
 import ani.saikou.parsers.Video
@@ -15,6 +16,7 @@ import ani.saikou.parsers.VideoExtractor
 import ani.saikou.parsers.VideoServer
 import ani.saikou.parsers.VideoType
 import ani.saikou.tryWithSuspend
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonElement
@@ -173,9 +175,19 @@ class Animex : AnimeParser() {
     )
 
     @Serializable
+    data class TrackItem(
+        val id: String? = null,
+        val url: String,
+        val lang: String? = null,
+        val label: String? = null,
+        val kind: String? = null,
+        @SerialName("default") val isDefault: Boolean = false,
+    )
+
+    @Serializable
     data class SourcesResponse(
         val sources: List<SourceItem> = emptyList(),
-        val tracks: JsonElement? = null,
+        val tracks: List<TrackItem> = emptyList(),
         val headers: Map<String, String>? = null,
     )
 
@@ -323,6 +335,24 @@ class AnimexExtractor(override val server: VideoServer) : VideoExtractor() {
             }
         }.sortedByDescending { it.quality ?: 0 }
 
-        return VideoContainer(videos, emptyList())
+        val subtitles = sourcesRes.tracks.mapNotNull { track ->
+            try {
+                val type = when {
+                    track.url.endsWith(".vtt", true) -> SubtitleType.VTT
+                    track.url.endsWith(".ass", true) -> SubtitleType.ASS
+                    track.url.endsWith(".srt", true) -> SubtitleType.SRT
+                    else -> SubtitleType.VTT
+                }
+                Subtitle(
+                    language = track.label ?: track.lang ?: "English",
+                    url = FileUrl(track.url, sourcesRes.headers ?: mapOf()),
+                    type = type,
+                )
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        return VideoContainer(videos, subtitles)
     }
 }
