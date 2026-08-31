@@ -16,10 +16,21 @@ static void log_stage(const char* stage)
     std::fflush(g_log);
 }
 
-class HomeActivity : public brls::Activity
+class LabelActivity : public brls::Activity
 {
   public:
-    CONTENT_FROM_XML_RES("activity/main.xml");
+    brls::View* createContentView() override
+    {
+        log_stage("BEFORE Label construction");
+        brls::Label* label = new brls::Label();
+        log_stage("AFTER Label construction");
+
+        log_stage("BEFORE Label setText");
+        label->setText("Saikou Label Test");
+        log_stage("AFTER Label setText");
+
+        return label;
+    }
 };
 
 int main(int argc, char* argv[])
@@ -63,13 +74,13 @@ int main(int argc, char* argv[])
     brls::Application::setGlobalQuit(false);
     log_stage("AFTER setGlobalQuit(false)");
 
-    log_stage("BEFORE HomeActivity construction");
-    HomeActivity* home = new HomeActivity();
-    log_stage("AFTER HomeActivity construction");
+    log_stage("BEFORE LabelActivity construction");
+    LabelActivity* activity = new LabelActivity();
+    log_stage("AFTER LabelActivity construction");
 
-    log_stage("BEFORE pushActivity");
-    brls::Application::pushActivity(home);
-    log_stage("AFTER pushActivity");
+    log_stage("BEFORE pushActivity(label)");
+    brls::Application::pushActivity(activity);
+    log_stage("AFTER pushActivity(label)");
 
     log_stage("BEFORE mainLoop");
     int loopCount = 0;
