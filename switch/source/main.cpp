@@ -59,12 +59,12 @@ int main(int argc, char* argv[])
     log_stage("Borealis window created");
     brls::Application::setGlobalQuit(false);
 
+    // Reproduce pushActivity() on a fresh HomeActivity, including the stages
+    // that the previous probe did not exercise: show() and giveFocus().
     log_stage("BEFORE HomeActivity construction");
     HomeActivity* activity = new HomeActivity();
     log_stage("AFTER HomeActivity construction");
 
-    // Probe the exact post-inflation stages performed by pushActivity().
-    // This intentionally avoids pushActivity() so the first failing stage is visible.
     log_stage("PROBE BEFORE createContentView");
     brls::View* content = activity->createContentView();
     log_stage(content ? "PROBE AFTER createContentView" : "PROBE createContentView returned NULL");
@@ -85,6 +85,10 @@ int main(int argc, char* argv[])
     activity->resizeToFitWindow();
     log_stage("PROBE AFTER resizeToFitWindow");
 
+    log_stage("PROBE BEFORE show");
+    activity->show([] { log_stage("PROBE show callback"); }, true, activity->getShowAnimationDuration(brls::TransitionAnimation::NONE));
+    log_stage("PROBE AFTER show");
+
     log_stage("PROBE BEFORE getDefaultFocus");
     brls::View* defaultFocus = activity->getDefaultFocus();
     log_stage(defaultFocus ? "PROBE AFTER getDefaultFocus NONNULL" : "PROBE AFTER getDefaultFocus NULL");
@@ -93,19 +97,18 @@ int main(int argc, char* argv[])
     activity->willAppear(true);
     log_stage("PROBE AFTER willAppear");
 
-    log_stage("PROBE ALL POST-INFLATION STAGES OK");
+    log_stage("PROBE BEFORE Application::giveFocus");
+    brls::Application::giveFocus(defaultFocus);
+    log_stage("PROBE AFTER Application::giveFocus");
 
-    // If every public stage above survives, hand control back to the real pushActivity()
-    // to determine whether its remaining stack/animation/focus bookkeeping is the fault.
+    log_stage("PROBE ALL PUSH STAGES OK");
+
+    // We deliberately stop here. If this probe survives, the only untested
+    // part of pushActivity() is its internal stack bookkeeping, which we can
+    // then isolate separately without risking a second HomeActivity inflation.
     delete activity;
 
-    log_stage("BEFORE HomeActivity construction (REAL PUSH)");
-    activity = new HomeActivity();
-    log_stage("AFTER HomeActivity construction (REAL PUSH)");
-    log_stage("BEFORE pushActivity(home)");
-    brls::Application::pushActivity(activity);
-    log_stage("AFTER pushActivity(home)");
-
+    log_stage("PROBE COMPLETE - no real pushActivity call");
     log_stage("BEFORE mainLoop");
     int loopCount = 0;
     while (brls::Application::mainLoop())
