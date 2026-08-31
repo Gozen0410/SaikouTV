@@ -16,6 +16,12 @@ class HomeActivity : public brls::Activity
 {
 public:
     CONTENT_FROM_XML_RES("activity/main.xml");
+    // Temporary compatibility fix: the Switch port currently crashes when
+    // Borealis tries to focus HomeActivity's XML-derived default focus view.
+    // Returning nullptr lets the activity enter without triggering that
+    // focus callback. Navigation/focus can be restored once the underlying
+    // Borealis focus issue is fixed.
+    brls::View* getDefaultFocus() override { return nullptr; }
 };
 
 int main(int argc, char* argv[])
@@ -41,28 +47,11 @@ int main(int argc, char* argv[])
     HomeActivity* activity = new HomeActivity();
     log_stage("AFTER HomeActivity construction");
 
-    log_stage("BEFORE createContentView");
-    brls::View* content = activity->createContentView();
-    log_stage("AFTER createContentView");
-    activity->setContentView(content);
-    log_stage("AFTER setContentView");
-    activity->onContentAvailable();
-    log_stage("AFTER onContentAvailable");
-    activity->resizeToFitWindow();
-    log_stage("AFTER resizeToFitWindow");
-    activity->show([] { log_stage("show callback"); }, true,
-                   activity->getShowAnimationDuration(brls::TransitionAnimation::FADE));
-    log_stage("AFTER show");
-    activity->willAppear(true);
-    log_stage("AFTER willAppear");
-
-    // FINAL CONTROL: remove the HomeActivity focus target entirely.
-    // Do not call pushActivity(); if this reaches mainLoop, focus is the
-    // confirmed difference between the working probe and the crash.
-    log_stage("BEFORE giveFocus(nullptr) CONTROL");
-    brls::Application::giveFocus(nullptr);
-    log_stage("AFTER giveFocus(nullptr) CONTROL");
-    log_stage("FOCUS BYPASS COMPLETE - BEFORE mainLoop");
+    // Use the real HomeActivity through Borealis now that its default focus
+    // is disabled. This tests the actual application path rather than a probe.
+    log_stage("BEFORE pushActivity(home) WITH FOCUS BYPASS");
+    brls::Application::pushActivity(activity);
+    log_stage("AFTER pushActivity(home) WITH FOCUS BYPASS");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
@@ -76,7 +65,6 @@ int main(int argc, char* argv[])
         }
     }
     log_stage("mainLoop returned false");
-    delete activity;
     romfsExit();
     return EXIT_SUCCESS;
 }
