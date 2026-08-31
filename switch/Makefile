@@ -58,6 +58,12 @@ export HFILES_BIN := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
+# Explicitly pass the ROMFS directory to libnx's elf2nro packaging step.
+# This is inherited by the recursive make running inside $(BUILD).
+ifneq ($(strip $(ROMFS)),)
+export NROFLAGS += --romfsdir=$(CURDIR)/$(ROMFS)
+endif
+
 # Keep every resource under romfs/ as an explicit dependency so libnx's
 # NRO packaging step cannot consider a stale/incomplete ROMFS up to date.
 ROMFS_TARGETS :=
