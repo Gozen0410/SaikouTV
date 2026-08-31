@@ -30,84 +30,51 @@ jobs:
         run: |
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
 
-      - name: Add init execution diagnostics
-        working-directory: switch/borealis
+      - name: Add romfs diagnostics
+        working-directory: switch
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('library/lib/core/application.cpp')
+          p = Path('source/main.cpp')
           s = p.read_text()
-
-          def add_once(source, needle, replacement, label):
-              if needle not in source:
-                  raise SystemExit(f'{label}: needle not found')
-              if replacement in source:
-                  return source
-              return source.replace(needle, replacement, 1)
-
-          s = add_once(
-              s,
-              'bool Application::init()\n{\n',
-              'bool Application::init()\n{\n    FILE* debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] init ENTER\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n',
-              'init entry')
-
-          s = add_once(
-              s,
-              '    // Init i18n\n    loadTranslations();\n',
-              '    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] BEFORE loadTranslations\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    // Init i18n\n    loadTranslations();\n\n    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] AFTER loadTranslations\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n',
-              'i18n boundary')
-
-          if '#include <cstdio>' not in s:
-              s = s.replace('#include <algorithm>\n', '#include <algorithm>\n#include <cstdio>\n', 1)
-
+          marker = '    fsdevMountSdmc();\n'
+          inject = '''    fsdevMountSdmc();\n\n    Result romfs_probe_rc = romfsInit();\n    FILE* earlyLog = std::fopen("sdmc:/switch/saikou_debug.log", "w");\n    if (earlyLog)\n    {\n        std::fprintf(earlyLog, "[Saikou] early romfsInit rc=%08x\\n", romfs_probe_rc);\n        std::fflush(earlyLog);\n        std::fclose(earlyLog);\n    }\n    if (R_SUCCEEDED(romfs_probe_rc))\n        romfsExit();\n'''
+          if marker not in s:
+              raise SystemExit('main romfs probe marker not found')
+          if 'early romfsInit rc=' not in s:
+              s = s.replace(marker, inject, 1)
           p.write_text(s)
           PY
 
-      - name: Add i18n diagnostic without rewriting existing functions
-        working-directory: switch/borealis
+      - name: Verify ROMFS payload before linking
+        working-directory: switch
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('library/lib/core/i18n.cpp')
-          s = p.read_text()
-          if '#include <cstdio>' not in s:
-              s = s.replace('#include <string>\n', '#include <string>\n#include <cstdio>\n', 1)
-          needle = '    std::string localePath = BRLS_ASSET("i18n/" + locale);\n'
-          inject = '''    std::string localePath = BRLS_ASSET("i18n/" + locale);\n\n    FILE* debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        bool exists = std::filesystem::exists(localePath);\n        bool isDirectory = exists && std::filesystem::is_directory(localePath);\n        std::fprintf(debugLog, "[Borealis/i18n] locale=%s path=%s exists=%d directory=%d\\n",\n            locale.c_str(), localePath.c_str(), exists ? 1 : 0, isDirectory ? 1 : 0);\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n'''
-          if needle not in s:
-              raise SystemExit('i18n path needle not found')
-          if '[Borealis/i18n] locale=%s path=%s exists' not in s:
-              s = s.replace(needle, inject, 1)
-          p.write_text(s)
-          PY
+          echo "=== ROMFS PAYLOAD CHECK ==="
+          echo "ROMFS directory:"
+          find romfs -maxdepth 3 -type f -print | sort
+          test -d romfs/i18n
+          test -n "$(find romfs/i18n -type f -print -quit)"
+          echo "i18n payload present: YES"
 
-      - name: Verify diagnostics and implementations
-        working-directory: switch/borealis
+      - name: Verify Borealis and ROMFS configuration
+        working-directory: switch
         run: |
-          echo "=== BOREALIS DIAGNOSTIC BUILD ==="
-          echo "Borealis revision: $(git rev-parse HEAD)"
-          test "$(git rev-parse HEAD)" = "7ae6c2826be5f9db5140a093c8fb8832ae356919"
-          grep -q 'Application::init' library/lib/core/application.cpp
-          grep -q 'Application::createWindow' library/lib/core/application.cpp
-          grep -q 'Application::mainLoop' library/lib/core/application.cpp
-          grep -q 'Application::frame' library/lib/core/application.cpp
-          grep -q 'Application::exit' library/lib/core/application.cpp
-          grep -q 'Application::setGlobalQuit' library/lib/core/application.cpp
-          grep -q 'Application::getLocale' library/lib/core/application.cpp
-          grep -q 'init ENTER' library/lib/core/application.cpp
-          grep -q 'BEFORE loadTranslations' library/lib/core/application.cpp
-          grep -q 'AFTER loadTranslations' library/lib/core/application.cpp
-          grep -q 'locale=%s path=%s exists' library/lib/core/i18n.cpp
-          grep -q 'SwitchPlatform constructor START' library/lib/platforms/switch/switch_platform.cpp
-          grep -q 'SwitchPlatform constructor END' library/lib/platforms/switch/switch_platform.cpp
+          grep -q '^ROMFS := romfs$' Makefile
+          grep -q 'ROMFS_DEPS' Makefile
+          grep -q 'Application::init' borealis/library/lib/core/application.cpp
+          grep -q 'SwitchPlatform constructor START' borealis/library/lib/platforms/switch/switch_platform.cpp
+          grep -q 'SwitchPlatform constructor END' borealis/library/lib/platforms/switch/switch_platform.cpp
 
       - name: Clean build
-        working-directory: switch
         run: make clean
 
       - name: Build NRO
-        working-directory: switch
         run: make -j2
+
+      - name: Inspect NRO and ROMFS artifacts
+        run: |
+          ls -lh *.nro *.elf *.nacp
+          echo "ROMFS payload files: $(find romfs -type f | wc -l)"
 
       - name: Upload NRO
         uses: actions/upload-artifact@v4
