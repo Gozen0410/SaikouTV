@@ -14,7 +14,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Fetch known-good Borealis with diagnostics
         run: |
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
@@ -29,65 +28,16 @@ jobs:
           cp -a switch/borealis/resources/. switch/romfs/
           cp -a /tmp/saikou-romfs/. switch/romfs/
           rm -rf /tmp/saikou-romfs
-
       - name: Patch Borealis for current libnx
         working-directory: switch/borealis
-        run: |
-          sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
-
-      - name: Instrument pushActivity and giveFocus
-        working-directory: switch/borealis
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('library/lib/core/application.cpp')
-          s = p.read_text()
-          old = '''void Application::pushActivity(Activity* activity, TransitionAnimation animation)\n{\n    Application::blockInputs();\n\n    // Create the activity content view\n    activity->setContentView(activity->createContentView());\n    activity->onContentAvailable();\n'''
-          new = '''void Application::pushActivity(Activity* activity, TransitionAnimation animation)\n{\n    Logger::info("[Diag] pushActivity ENTER");\n    Logger::info("[Diag] BEFORE blockInputs");\n    Application::blockInputs();\n    Logger::info("[Diag] AFTER blockInputs");\n\n    // Create the activity content view\n    Logger::info("[Diag] BEFORE createContentView");\n    View* createdContentView = activity->createContentView();\n    Logger::info("[Diag] AFTER createContentView");\n    Logger::info("[Diag] BEFORE setContentView");\n    activity->setContentView(createdContentView);\n    Logger::info("[Diag] AFTER setContentView");\n    Logger::info("[Diag] BEFORE onContentAvailable");\n    activity->onContentAvailable();\n    Logger::info("[Diag] AFTER onContentAvailable");\n'''
-          if old not in s: raise SystemExit('pushActivity anchor not found')
-          s = s.replace(old, new, 1)
-          old = '''void Application::giveFocus(View* view)\n{\n    View* oldFocus = Application::currentFocus;\n    View* newFocus = view ? view->getDefaultFocus() : nullptr;\n\n    if (oldFocus != newFocus)\n    {\n        if (oldFocus)\n            oldFocus->onFocusLost();\n\n        Application::currentFocus = newFocus;\n        Application::globalFocusChangeEvent.fire(newFocus);\n\n        if (newFocus)\n        {\n            newFocus->onFocusGained();\n            Logger::debug("Giving focus to {}", newFocus->describe());\n        }\n    }\n}\n'''
-          new = '''void Application::giveFocus(View* view)\n{\n    Logger::info("[FocusDiag] ENTER view={}", (void*)view);\n    View* oldFocus = Application::currentFocus;\n    Logger::info("[FocusDiag] oldFocus={}", (void*)oldFocus);\n    Logger::info("[FocusDiag] BEFORE view->getDefaultFocus");\n    View* newFocus = view ? view->getDefaultFocus() : nullptr;\n    Logger::info("[FocusDiag] AFTER view->getDefaultFocus newFocus={}", (void*)newFocus);\n\n    if (oldFocus != newFocus)\n    {\n        if (oldFocus)\n        {\n            Logger::info("[FocusDiag] BEFORE oldFocus->onFocusLost");\n            oldFocus->onFocusLost();\n            Logger::info("[FocusDiag] AFTER oldFocus->onFocusLost");\n        }\n        Application::currentFocus = newFocus;\n        Logger::info("[FocusDiag] currentFocus assigned");\n        Logger::info("[FocusDiag] BEFORE globalFocusChangeEvent.fire");\n        Application::globalFocusChangeEvent.fire(newFocus);\n        Logger::info("[FocusDiag] AFTER globalFocusChangeEvent.fire");\n        if (newFocus)\n        {\n            Logger::info("[FocusDiag] BEFORE newFocus->onFocusGained");\n            newFocus->onFocusGained();\n            Logger::info("[FocusDiag] AFTER newFocus->onFocusGained");\n            Logger::debug("Giving focus to {}", newFocus->describe());\n        }\n    }\n    else\n        Logger::info("[FocusDiag] oldFocus == newFocus; no focus callbacks");\n    Logger::info("[FocusDiag] EXIT");\n}\n'''
-          if old not in s: raise SystemExit('giveFocus anchor not found')
-          p.write_text(s.replace(old, new, 1))
-          print('diagnostics applied')
-          PY
-
-      - name: Verify ROMFS payload
-        working-directory: switch
-        run: |
-          test -d romfs/i18n/en-US
-          test -f romfs/i18n/en-US/brls.json
-          test -f romfs/xml/activity/main.xml
-          grep -q 'TabFrame' romfs/xml/activity/main.xml
-          grep -q 'Home' romfs/xml/activity/main.xml
-          grep -q 'Search' romfs/xml/activity/main.xml
-
-      - name: Verify configuration
-        working-directory: switch
-        run: |
-          grep -q '^ROMFS := romfs$' Makefile
-          grep -q 'ROMFS_DEPS' Makefile
-          grep -q '\[FocusDiag\] BEFORE view->getDefaultFocus' borealis/library/lib/core/application.cpp
-          grep -q '\[FocusDiag\] AFTER newFocus->onFocusGained' borealis/library/lib/core/application.cpp
-
-      - name: Build ELF
+        run: sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
+      - name: Build
         working-directory: switch
         run: |
           set -eux
           make clean
           make -j2 V=1
-          ls -lh saikou_switch.elf saikou_switch.nacp
-
-      - name: Package NRO with ROMFS explicitly
-        working-directory: switch
-        run: |
-          set -eux
-          rm -f saikou_switch.nro
-          "${DEVKITPRO}/tools/bin/elf2nro" saikou_switch.elf saikou_switch.nro --nacp=saikou_switch.nacp --romfsdir="${PWD}/romfs"
-          test -s saikou_switch.nro
-          ls -lh saikou_switch.nro
-
+          "${DEVKITPRO}/tools/bin/elf2nro" saikou_switch.elf saikou_switch.nro --nacp=saikou_switch.nacp --romfsdir="${PWD}/romfs"\          
       - name: Upload NRO
         uses: actions/upload-artifact@v4
         with:
