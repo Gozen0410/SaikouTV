@@ -16,6 +16,7 @@ CXXFLAGS    := $(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS     := -g $(ARCH)
 
 LIBS        := -lnx
+LIBDIRS     := $(PORTLIBS) $(LIBNX)
 
 export APP_TITLE      := Saikou Switch
 export APP_AUTHOR     := SaikouTV Switch Port
@@ -39,6 +40,7 @@ export OFILES_SRC := $(CFILES:.c=.o) $(CPPFILES:.cpp=.o) $(SFILES:.s=.o)
 export OFILES     := $(OFILES_SRC:.o=.o)
 export INCLUDE    := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir))
 export LIBPATHS   := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+export LIBS
 
 .PHONY: all clean
 
@@ -51,10 +53,16 @@ DEPENDS := $(OFILES:.o=.d)
 $(TARGET).nro: $(TARGET).elf
 
 $(TARGET).elf: $(OFILES)
+	@echo linking $(notdir $@)
+	@$(LD) $(LDFLAGS) $(OFILES) $(LIBPATHS) $(LIBS) -o $@
 
 %.o: %.c
 	@echo $(notdir $<)
 	@$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+%.o: %.cpp
+	@echo $(notdir $<)
+	@$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
 -include $(DEPENDS)
 
