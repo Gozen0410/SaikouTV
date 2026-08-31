@@ -14,18 +14,12 @@ static void log_stage(const char* stage)
     std::fflush(g_log);
 }
 
-class HomeActivity : public brls::Activity
-{
-  public:
-    CONTENT_FROM_XML_RES("activity/main.xml");
-};
-
 int main(int argc, char* argv[])
 {
     (void)argc;
     (void)argv;
 
-    // Write diagnostics to the SD card; nxlink is not required.
+    // Keep the diagnostic completely independent of Borealis resources/UI.
     fsdevMountSdmc();
     g_log = std::fopen("sdmc:/switch/saikou_debug.log", "w");
     log_stage("entered main");
@@ -41,19 +35,11 @@ int main(int argc, char* argv[])
     }
     log_stage("Application::init OK");
 
-    brls::Application::createWindow("Saikou Switch");
-    log_stage("window created");
+    // Do not create a window or load XML yet. This isolates Application::init().
+    while (true)
+    {
+        svcSleepThread(1000000000LL);
+    }
 
-    brls::Application::setGlobalQuit(true);
-    log_stage("global quit configured");
-
-    brls::Application::pushActivity(new HomeActivity());
-    log_stage("HomeActivity pushed");
-
-    while (brls::Application::mainLoop())
-        ;
-
-    log_stage("main loop ended");
-    if (g_log) std::fclose(g_log);
     return EXIT_SUCCESS;
 }
