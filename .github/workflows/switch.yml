@@ -15,12 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch Borealis
+      - name: Fetch known-good Borealis with diagnostics
         run: |
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
           cd switch/borealis
-          git fetch --depth 1 origin cf973a5c8a38548720b36078f8a3440197d9f18c
-          git checkout cf973a5c8a38548720b36078f8a3440197d9f18c
+          git fetch --depth 2 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919 cf973a5c8a38548720b36078f8a3440197d9f18c
+          git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
+          git cherry-pick cf973a5c8a38548720b36078f8a3440197d9f18c
           cd ../..
           mkdir -p switch/romfs
           cp -a switch/borealis/resources/. switch/romfs/
@@ -34,8 +35,15 @@ jobs:
         working-directory: switch/borealis
         run: |
           echo "=== DIAGNOSTIC BOREALIS BUILD ==="
-          echo "Borealis revision: $(git rev-parse HEAD)"
+          echo "Borealis base revision: 7ae6c2826be5f9db5140a093c8fb8832ae356919"
+          echo "Borealis diagnostic commit: cf973a5c8a38548720b36078f8a3440197d9f18c"
+          echo "Effective revision: $(git rev-parse HEAD)"
+          echo "Checking that Application::init is the full known-good implementation..."
+          grep -n "Application::init START\|Application::init END" library/lib/core/application.cpp
+          grep -n "void Application::navigate\|void Application::exit\|void Application::setGlobalQuit\|void Application::pushActivity" library/lib/core/application.cpp
+          echo "Checking i18n diagnostics..."
           grep -n "locale=%s path=%s exists" library/lib/core/i18n.cpp
+          echo "Checking SwitchPlatform diagnostics..."
           grep -n "SwitchPlatform constructor START\|SwitchPlatform constructor END" library/lib/platforms/switch/switch_platform.cpp
 
       - name: Clean build
