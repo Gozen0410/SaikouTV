@@ -31,6 +31,27 @@ jobs:
         run: |
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
 
+      - name: Add init execution diagnostics
+        working-directory: switch/borealis
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('library/lib/core/application.cpp')
+          s = p.read_text()
+          needle = '''bool Application::init()\n{\n    // Init platform\n'''
+          inject = '''bool Application::init()\n{\n    FILE* debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] init ENTER\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    // Init platform\n'''
+          if needle not in s:\n              raise SystemExit('Application::init entry needle not found')\n          s = s.replace(needle, inject, 1)
+
+          needle = '''    if (!Application::platform)\n    {\n'''
+          inject = '''    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] platform CREATED\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    if (!Application::platform)\n    {\n'''
+          if needle not in s:\n              raise SystemExit('platform check needle not found')\n          s = s.replace(needle, inject, 1)
+
+          needle = '''    // Init i18n\n    loadTranslations();\n\n    Application::inited = true;\n'''
+          inject = '''    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] BEFORE loadTranslations\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    // Init i18n\n    loadTranslations();\n\n    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] AFTER loadTranslations\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    Application::inited = true;\n'''
+          if needle not in s:\n              raise SystemExit('loadTranslations needle not found')\n          s = s.replace(needle, inject, 1)
+          p.write_text(s)
+          PY
+
       - name: Add i18n diagnostic without rewriting existing functions
         working-directory: switch/borealis
         run: |
@@ -61,6 +82,10 @@ jobs:
           grep -q 'Application::exit' library/lib/core/application.cpp
           grep -q 'Application::setGlobalQuit' library/lib/core/application.cpp
           grep -q 'Application::getLocale' library/lib/core/application.cpp
+          grep -q 'init ENTER' library/lib/core/application.cpp
+          grep -q 'platform CREATED' library/lib/core/application.cpp
+          grep -q 'BEFORE loadTranslations' library/lib/core/application.cpp
+          grep -q 'AFTER loadTranslations' library/lib/core/application.cpp
           grep -q 'locale=%s path=%s exists' library/lib/core/i18n.cpp
           grep -q 'SwitchPlatform constructor START' library/lib/platforms/switch/switch_platform.cpp
           grep -q 'SwitchPlatform constructor END' library/lib/platforms/switch/switch_platform.cpp
