@@ -22,6 +22,7 @@ jobs:
           git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
           git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
           cd ../..
+          rm -rf switch/romfs
           mkdir -p switch/romfs
           cp -a switch/borealis/resources/. switch/romfs/
 
@@ -30,51 +31,32 @@ jobs:
         run: |
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
 
-      - name: Add romfs diagnostics
+      - name: Verify ROMFS payload
         working-directory: switch
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('source/main.cpp')
-          s = p.read_text()
-          marker = '    fsdevMountSdmc();\n'
-          inject = '''    fsdevMountSdmc();\n\n    Result romfs_probe_rc = romfsInit();\n    FILE* earlyLog = std::fopen("sdmc:/switch/saikou_debug.log", "w");\n    if (earlyLog)\n    {\n        std::fprintf(earlyLog, "[Saikou] early romfsInit rc=%08x\\n", romfs_probe_rc);\n        std::fflush(earlyLog);\n        std::fclose(earlyLog);\n    }\n    if (R_SUCCEEDED(romfs_probe_rc))\n        romfsExit();\n'''
-          if marker not in s:
-              raise SystemExit('main romfs probe marker not found')
-          if 'early romfsInit rc=' not in s:
-              s = s.replace(marker, inject, 1)
-          p.write_text(s)
-          PY
+          echo "=== ROMFS PAYLOAD ==="
+          find romfs -type f -print | sort
+          test -d romfs/i18n/en-US
+          test -f romfs/i18n/en-US/brls.json
+          echo "i18n payload present"
 
-      - name: Verify ROMFS payload before linking
-        working-directory: switch
-        run: |
-          echo "=== ROMFS PAYLOAD CHECK ==="
-          echo "ROMFS directory:"
-          find romfs -maxdepth 3 -type f -print | sort
-          test -d romfs/i18n
-          test -n "$(find romfs/i18n -type f -print -quit)"
-          echo "i18n payload present: YES"
-
-      - name: Verify Borealis and ROMFS configuration
+      - name: Verify configuration
         working-directory: switch
         run: |
           grep -q '^ROMFS := romfs$' Makefile
           grep -q 'ROMFS_DEPS' Makefile
-          grep -q 'Application::init' borealis/library/lib/core/application.cpp
           grep -q 'SwitchPlatform constructor START' borealis/library/lib/platforms/switch/switch_platform.cpp
           grep -q 'SwitchPlatform constructor END' borealis/library/lib/platforms/switch/switch_platform.cpp
 
-      - name: Clean build
-        run: make clean
-
       - name: Build NRO
+        working-directory: switch
         run: make -j2
 
-      - name: Inspect NRO and ROMFS artifacts
+      - name: Inspect build
+        working-directory: switch
         run: |
-          ls -lh *.nro *.elf *.nacp
-          echo "ROMFS payload files: $(find romfs -type f | wc -l)"
+          ls -lh saikou_switch.nro saikou_switch.elf saikou_switch.nacp
+          echo "ROMFS files: $(find romfs -type f | wc -l)"
 
       - name: Upload NRO
         uses: actions/upload-artifact@v4
