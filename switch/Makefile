@@ -21,7 +21,7 @@ APP_DESCRIPTION := Native Switch port bootstrap
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS := -g -Wall -O2 -ffunction-sections $(ARCH)
 CFLAGS += -D__SWITCH__ $(INCLUDE)
-CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
+CXXFLAGS := $(CFLAGS)
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 LIBS := -lnx
