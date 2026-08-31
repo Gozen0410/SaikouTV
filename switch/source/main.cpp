@@ -9,6 +9,8 @@ static FILE* g_log = nullptr;
 static void log_stage(const char* stage)
 {
     if (!g_log)
+        g_log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
+    if (!g_log)
         return;
     std::fprintf(g_log, "[Saikou] %s\n", stage);
     std::fflush(g_log);
@@ -47,36 +49,41 @@ int main(int argc, char* argv[])
 
     if (!brls::Application::init())
     {
-        FILE* log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
-        if (log)
-        {
-            std::fprintf(log, "[Saikou] Application::init FAILED\n");
-            std::fclose(log);
-        }
+        log_stage("Application::init FAILED");
         romfsExit();
         return EXIT_FAILURE;
     }
 
-    FILE* log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
-    if (log)
-    {
-        std::fprintf(log, "[Saikou] Application::init OK\n");
-        std::fclose(log);
-    }
+    log_stage("Application::init OK");
 
     brls::Application::createWindow("Saikou Switch");
-    log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
-    if (log)
-    {
-        std::fprintf(log, "[Saikou] Borealis window created\n");
-        std::fclose(log);
-    }
+    log_stage("Borealis window created");
 
-    brls::Application::setGlobalQuit(true);
-    brls::Application::pushActivity(new HomeActivity());
+    log_stage("BEFORE setGlobalQuit(false)");
+    brls::Application::setGlobalQuit(false);
+    log_stage("AFTER setGlobalQuit(false)");
 
+    log_stage("BEFORE HomeActivity construction");
+    HomeActivity* home = new HomeActivity();
+    log_stage("AFTER HomeActivity construction");
+
+    log_stage("BEFORE pushActivity");
+    brls::Application::pushActivity(home);
+    log_stage("AFTER pushActivity");
+
+    log_stage("BEFORE mainLoop");
+    int loopCount = 0;
     while (brls::Application::mainLoop())
-        ;
+    {
+        ++loopCount;
+        if (loopCount <= 5)
+        {
+            char marker[64];
+            std::snprintf(marker, sizeof(marker), "mainLoop returned true #%d", loopCount);
+            log_stage(marker);
+        }
+    }
+    log_stage("mainLoop returned false");
 
     romfsExit();
     return EXIT_SUCCESS;
