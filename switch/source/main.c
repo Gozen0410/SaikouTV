@@ -8,6 +8,18 @@ int main(int argc, char* argv[]) {
 
     consoleInit(NULL);
 
+    // The current libnx no longer exposes the old hidScanInput() helper in
+    // the public input path used by this toolchain. Initialize Npad support
+    // explicitly and read the shared-memory state directly.
+    hidInitializeNpad();
+    hidSetSupportedNpadStyleSet(HidNpadStyleSet_NpadFullCtrl);
+
+    const HidNpadIdType ids[] = {
+        HidNpadIdType_No1,
+        HidNpadIdType_Handheld,
+    };
+    hidSetSupportedNpadIdType(ids, sizeof(ids) / sizeof(ids[0]));
+
     printf("Saikou Switch\n\n");
     printf("Native Switch port bootstrap\n");
     printf("\n");
@@ -16,8 +28,6 @@ int main(int argc, char* argv[]) {
     printf("Press + to exit.\n");
 
     while (appletMainLoop()) {
-        hidScanInput();
-
         HidNpadFullKeyState state;
         size_t count = hidGetNpadStatesFullKey(HidNpadIdType_No1, &state, 1);
 
