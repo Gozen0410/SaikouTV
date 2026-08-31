@@ -86,7 +86,7 @@ int main(int argc, char* argv[])
     log_stage("PROBE AFTER resizeToFitWindow");
 
     log_stage("PROBE BEFORE show");
-    activity->show([] { log_stage("PROBE show callback"); }, true, activity->getShowAnimationDuration(brls::TransitionAnimation::NONE));
+    activity->show([] { log_stage("PROBE show callback"); }, true, activity->getShowAnimationDuration(brls::TransitionAnimation::FADE));
     log_stage("PROBE AFTER show");
 
     log_stage("PROBE BEFORE getDefaultFocus");
