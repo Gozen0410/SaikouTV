@@ -63,6 +63,45 @@ int main(int argc, char* argv[])
     HomeActivity* activity = new HomeActivity();
     log_stage("AFTER HomeActivity construction");
 
+    // Probe the exact post-inflation stages performed by pushActivity().
+    // This intentionally avoids pushActivity() so the first failing stage is visible.
+    log_stage("PROBE BEFORE createContentView");
+    brls::View* content = activity->createContentView();
+    log_stage(content ? "PROBE AFTER createContentView" : "PROBE createContentView returned NULL");
+
+    log_stage("PROBE BEFORE setContentView");
+    activity->setContentView(content);
+    log_stage("PROBE AFTER setContentView");
+
+    log_stage("PROBE BEFORE onContentAvailable");
+    activity->onContentAvailable();
+    log_stage("PROBE AFTER onContentAvailable");
+
+    log_stage("PROBE BEFORE isTranslucent");
+    bool translucent = activity->isTranslucent();
+    log_stage(translucent ? "PROBE AFTER isTranslucent TRUE" : "PROBE AFTER isTranslucent FALSE");
+
+    log_stage("PROBE BEFORE resizeToFitWindow");
+    activity->resizeToFitWindow();
+    log_stage("PROBE AFTER resizeToFitWindow");
+
+    log_stage("PROBE BEFORE getDefaultFocus");
+    brls::View* defaultFocus = activity->getDefaultFocus();
+    log_stage(defaultFocus ? "PROBE AFTER getDefaultFocus NONNULL" : "PROBE AFTER getDefaultFocus NULL");
+
+    log_stage("PROBE BEFORE willAppear");
+    activity->willAppear(true);
+    log_stage("PROBE AFTER willAppear");
+
+    log_stage("PROBE ALL POST-INFLATION STAGES OK");
+
+    // If every public stage above survives, hand control back to the real pushActivity()
+    // to determine whether its remaining stack/animation/focus bookkeeping is the fault.
+    delete activity;
+
+    log_stage("BEFORE HomeActivity construction (REAL PUSH)");
+    activity = new HomeActivity();
+    log_stage("AFTER HomeActivity construction (REAL PUSH)");
     log_stage("BEFORE pushActivity(home)");
     brls::Application::pushActivity(activity);
     log_stage("AFTER pushActivity(home)");
