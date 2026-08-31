@@ -15,6 +15,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Fetch Borealis
+        run: |
+          git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
+          mkdir -p switch/romfs
+          cp -a switch/borealis/resources/. switch/romfs/
+
       - name: Build NRO
         working-directory: switch
         run: make -j2
