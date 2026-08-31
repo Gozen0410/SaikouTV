@@ -85,3 +85,5 @@ jobs:
         with:
           name: saikou-switch
           path: switch/*.nro
+
+# Trigger diagnostic build for the latest pushActivity instrumentation.
