@@ -1,12 +1,17 @@
 #include <borealis.hpp>
+#include <switch.h>
 
 #include <cstdio>
 #include <cstdlib>
 
+static FILE* g_log = nullptr;
+
 static void log_stage(const char* stage)
 {
-    std::printf("[Saikou] %s\n", stage);
-    std::fflush(stdout);
+    if (!g_log)
+        return;
+    std::fprintf(g_log, "[Saikou] %s\n", stage);
+    std::fflush(g_log);
 }
 
 class HomeActivity : public brls::Activity
@@ -20,13 +25,18 @@ int main(int argc, char* argv[])
     (void)argc;
     (void)argv;
 
+    // Write diagnostics to the SD card; nxlink is not required.
+    fsdevMountSdmc();
+    g_log = std::fopen("sdmc:/switch/saikou_debug.log", "w");
     log_stage("entered main");
+
     brls::Logger::setLogLevel(brls::LogLevel::DEBUG);
     log_stage("logger configured");
 
     if (!brls::Application::init())
     {
         log_stage("Application::init FAILED");
+        if (g_log) std::fclose(g_log);
         return EXIT_FAILURE;
     }
     log_stage("Application::init OK");
@@ -44,5 +54,6 @@ int main(int argc, char* argv[])
         ;
 
     log_stage("main loop ended");
+    if (g_log) std::fclose(g_log);
     return EXIT_SUCCESS;
 }
