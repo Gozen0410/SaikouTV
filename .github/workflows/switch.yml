@@ -19,9 +19,9 @@ jobs:
         run: |
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
           cd switch/borealis
-          git fetch --depth 2 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919 cf973a5c8a38548720b36078f8a3440197d9f18c
+          git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
           git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
-          git cherry-pick cf973a5c8a38548720b36078f8a3440197d9f18c
+          git diff --binary > /tmp/borealis-base.patch || true
           cd ../..
           mkdir -p switch/romfs
           cp -a switch/borealis/resources/. switch/romfs/
@@ -31,20 +31,39 @@ jobs:
         run: |
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
 
-      - name: Verify Borealis diagnostic source
+      - name: Add i18n diagnostic without rewriting existing functions
         working-directory: switch/borealis
         run: |
-          echo "=== DIAGNOSTIC BOREALIS BUILD ==="
-          echo "Borealis base revision: 7ae6c2826be5f9db5140a093c8fb8832ae356919"
-          echo "Borealis diagnostic commit: cf973a5c8a38548720b36078f8a3440197d9f18c"
-          echo "Effective revision: $(git rev-parse HEAD)"
-          echo "Checking that Application::init is the full known-good implementation..."
-          grep -n "Application::init START\|Application::init END" library/lib/core/application.cpp
-          grep -n "void Application::navigate\|void Application::exit\|void Application::setGlobalQuit\|void Application::pushActivity" library/lib/core/application.cpp
-          echo "Checking i18n diagnostics..."
-          grep -n "locale=%s path=%s exists" library/lib/core/i18n.cpp
-          echo "Checking SwitchPlatform diagnostics..."
-          grep -n "SwitchPlatform constructor START\|SwitchPlatform constructor END" library/lib/platforms/switch/switch_platform.cpp
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('library/lib/core/i18n.cpp')
+          s = p.read_text()
+          if '#include <cstdio>' not in s:
+              s = s.replace('#include <string>\n', '#include <string>\n#include <cstdio>\n', 1)
+          needle = '    std::string localePath = BRLS_ASSET("i18n/" + locale);\n'
+          inject = '''    std::string localePath = BRLS_ASSET("i18n/" + locale);\n\n    FILE* debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        bool exists = std::filesystem::exists(localePath);\n        bool isDirectory = exists && std::filesystem::is_directory(localePath);\n        std::fprintf(debugLog, "[Borealis/i18n] locale=%s path=%s exists=%d directory=%d\\n",\n            locale.c_str(), localePath.c_str(), exists ? 1 : 0, isDirectory ? 1 : 0);\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n'''
+          if needle not in s:
+              raise SystemExit('i18n path needle not found')
+          s = s.replace(needle, inject, 1)
+          p.write_text(s)
+          PY
+
+      - name: Verify full Borealis application implementation and diagnostics
+        working-directory: switch/borealis
+        run: |
+          echo "=== BOREALIS DIAGNOSTIC BUILD ==="
+          echo "Borealis revision: $(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "7ae6c2826be5f9db5140a093c8fb8832ae356919"
+          grep -q 'Application::init' library/lib/core/application.cpp
+          grep -q 'Application::createWindow' library/lib/core/application.cpp
+          grep -q 'Application::mainLoop' library/lib/core/application.cpp
+          grep -q 'Application::frame' library/lib/core/application.cpp
+          grep -q 'Application::exit' library/lib/core/application.cpp
+          grep -q 'Application::setGlobalQuit' library/lib/core/application.cpp
+          grep -q 'Application::getLocale' library/lib/core/application.cpp
+          grep -q 'locale=%s path=%s exists' library/lib/core/i18n.cpp
+          grep -q 'SwitchPlatform constructor START' library/lib/platforms/switch/switch_platform.cpp
+          grep -q 'SwitchPlatform constructor END' library/lib/platforms/switch/switch_platform.cpp
 
       - name: Clean build
         working-directory: switch
