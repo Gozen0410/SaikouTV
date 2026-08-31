@@ -19,8 +19,8 @@ jobs:
         run: |
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
           cd switch/borealis
-          git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
-          git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
+          git fetch --depth 1 origin 1bf5fe7de9515c8da1b9ceec8f113879989d08e4
+          git checkout 1bf5fe7de9515c8da1b9ceec8f113879989d08e4
           cd ../..
           mkdir -p switch/romfs
           cp -a switch/borealis/resources/. switch/romfs/
@@ -29,6 +29,13 @@ jobs:
         working-directory: switch/borealis
         run: |
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
+
+      - name: Verify Borealis diagnostic source
+        working-directory: switch/borealis
+        run: |
+          echo "Borealis revision: $(git rev-parse HEAD)"
+          grep -n "Application::init START\|creating platform START\|loadTranslations START" library/lib/core/application.cpp
+          grep -n "SwitchPlatform constructor START\|creating SwitchAudioPlayer START\|creating SwitchInputManager START\|creating SwitchFontLoader START" library/lib/platforms/switch/switch_platform.cpp
 
       - name: Build NRO
         working-directory: switch
