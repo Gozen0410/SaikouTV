@@ -1,7 +1,7 @@
 .SUFFIXES:
 
 ifeq ($(strip $(DEVKITPRO)),)
-$(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>/devkitpro")
+$(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>/devkitpro)
 endif
 
 TOPDIR ?= $(CURDIR)
@@ -58,14 +58,19 @@ export HFILES_BIN := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
+# The NRO must depend on the complete application ROMFS, not just generated shaders.
 ROMFS_TARGETS :=
 ROMFS_FOLDERS :=
+ROMFS_FILES := $(shell find $(ROMFS) -type f 2>/dev/null)
+ROMFS_TARGETS += $(ROMFS_FILES)
+
 ifneq ($(strip $(OUT_SHADERS)),)
 ROMFS_SHADERS := $(ROMFS)/$(OUT_SHADERS)
 ROMFS_TARGETS += $(patsubst %.glsl,$(ROMFS_SHADERS)/%.dksh,$(GLSLFILES))
 ROMFS_FOLDERS += $(ROMFS_SHADERS)
-export ROMFS_DEPS := $(foreach file,$(ROMFS_TARGETS),$(CURDIR)/$(file))
 endif
+
+export ROMFS_DEPS := $(foreach file,$(ROMFS_TARGETS),$(CURDIR)/$(file))
 
 .PHONY: all clean
 all: $(ROMFS_TARGETS) | $(BUILD)
@@ -74,7 +79,7 @@ all: $(ROMFS_TARGETS) | $(BUILD)
 $(BUILD):
 	@mkdir -p $@
 
-ifneq ($(strip $(ROMFS_TARGETS)),)
+ifneq ($(strip $(OUT_SHADERS)),)
 $(ROMFS_TARGETS): | $(ROMFS_FOLDERS)
 $(ROMFS_FOLDERS):
 	@mkdir -p $@
