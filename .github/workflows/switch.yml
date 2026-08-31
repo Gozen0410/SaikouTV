@@ -22,12 +22,17 @@ jobs:
           git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
           git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
           cd ../..
+
+          # Stage Borealis resources without destroying Saikou's tracked ROMFS.
+          # Saikou-owned files are copied back last, so conflicting paths always
+          # keep the Saikou version (especially xml/activity/main.xml).
+          rm -rf /tmp/saikou-romfs
+          cp -a switch/romfs /tmp/saikou-romfs
           rm -rf switch/romfs
           mkdir -p switch/romfs
           cp -a switch/borealis/resources/. switch/romfs/
-          # Restore Saikou-owned tracked ROMFS files after copying Borealis resources.
-          # The previous order overwrote Saikou's activity/main.xml with Borealis' demo XML.
-          git checkout -- switch/romfs
+          cp -a /tmp/saikou-romfs/. switch/romfs/
+          rm -rf /tmp/saikou-romfs
 
       - name: Patch Borealis for current libnx
         working-directory: switch/borealis
@@ -60,7 +65,11 @@ jobs:
           test -f romfs/xml/activity/main.xml
           echo "=== ACTIVITY XML ==="
           sed -n '1,120p' romfs/xml/activity/main.xml
-          echo "ROMFS payload present"
+          echo "=== SAikou XML MARKERS ==="
+          grep -q 'TabFrame' romfs/xml/activity/main.xml
+          grep -q 'Home' romfs/xml/activity/main.xml
+          grep -q 'Search' romfs/xml/activity/main.xml
+          echo "Saikou ROMFS payload verified"
 
       - name: Verify configuration
         working-directory: switch
