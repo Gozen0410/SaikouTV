@@ -31,17 +31,20 @@ int main(int argc, char* argv[])
 
     brls::Logger::setLogLevel(brls::LogLevel::DEBUG);
     log_stage("logger configured");
-    log_stage("closing Saikou log before Borealis init");
 
-    // Borealis has its own diagnostic writer. Close our handle before entering
-    // Application::init() so two libc FILE handles never access the same file.
+    Result romfsRc = romfsInit();
+    if (R_SUCCEEDED(romfsRc))
+        log_stage("romfsInit OK");
+    else
+        log_stage("romfsInit FAILED");
+
+    log_stage("closing Saikou log before Borealis init");
     if (g_log)
     {
         std::fclose(g_log);
         g_log = nullptr;
     }
 
-    // Borealis' SwitchPlatform instrumentation now owns the log during init.
     if (!brls::Application::init())
     {
         FILE* log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
@@ -50,6 +53,7 @@ int main(int argc, char* argv[])
             std::fprintf(log, "[Saikou] Application::init FAILED\n");
             std::fclose(log);
         }
+        romfsExit();
         return EXIT_FAILURE;
     }
 
@@ -74,5 +78,6 @@ int main(int argc, char* argv[])
     while (brls::Application::mainLoop())
         ;
 
+    romfsExit();
     return EXIT_SUCCESS;
 }
