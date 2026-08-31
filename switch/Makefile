@@ -24,7 +24,7 @@ APP_DESCRIPTION := Native Switch Saikou UI prototype
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS := -g -Wall -O2 -ffunction-sections $(ARCH)
 CFLAGS += -D__SWITCH__ $(INCLUDE)
-CXXFLAGS := $(CFLAGS) -std=c++1z -O2 -Wno-volatile
+CXXFLAGS := $(CFLAGS) -std=c++1z -O2 -Wno-volatile -include optional
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 LIBS := -lnx
@@ -58,14 +58,12 @@ export HFILES_BIN := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-ifneq ($(strip $(ROMFS)),)
 ROMFS_TARGETS :=
 ROMFS_FOLDERS :=
 ifneq ($(strip $(OUT_SHADERS)),)
 ROMFS_SHADERS := $(ROMFS)/$(OUT_SHADERS)
 ROMFS_TARGETS += $(patsubst %.glsl,$(ROMFS_SHADERS)/%.dksh,$(GLSLFILES))
 ROMFS_FOLDERS += $(ROMFS_SHADERS)
-endif
 export ROMFS_DEPS := $(foreach file,$(ROMFS_TARGETS),$(CURDIR)/$(file))
 endif
 
@@ -97,10 +95,14 @@ clean:
 else
 
 DEPENDS := $(OFILES:.o=.d)
+
 .PHONY: all
 all: $(OUTPUT).nro
+
 $(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp $(ROMFS_DEPS)
+
 $(OUTPUT).elf: $(OFILES)
+
 -include $(DEPENDS)
 
 endif
