@@ -21,7 +21,6 @@ jobs:
           cd switch/borealis
           git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
           git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
-          git diff --binary > /tmp/borealis-base.patch || true
           cd ../..
           mkdir -p switch/romfs
           cp -a switch/borealis/resources/. switch/romfs/
@@ -38,17 +37,29 @@ jobs:
           from pathlib import Path
           p = Path('library/lib/core/application.cpp')
           s = p.read_text()
-          needle = '''bool Application::init()\n{\n    // Init platform\n'''
-          inject = '''bool Application::init()\n{\n    FILE* debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] init ENTER\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    // Init platform\n'''
-          if needle not in s:\n              raise SystemExit('Application::init entry needle not found')\n          s = s.replace(needle, inject, 1)
 
-          needle = '''    if (!Application::platform)\n    {\n'''
-          inject = '''    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] platform CREATED\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    if (!Application::platform)\n    {\n'''
-          if needle not in s:\n              raise SystemExit('platform check needle not found')\n          s = s.replace(needle, inject, 1)
+          def add_once(source, needle, replacement, label):
+              if needle not in source:
+                  raise SystemExit(f'{label}: needle not found')
+              if replacement in source:
+                  return source
+              return source.replace(needle, replacement, 1)
 
-          needle = '''    // Init i18n\n    loadTranslations();\n\n    Application::inited = true;\n'''
-          inject = '''    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] BEFORE loadTranslations\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    // Init i18n\n    loadTranslations();\n\n    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] AFTER loadTranslations\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    Application::inited = true;\n'''
-          if needle not in s:\n              raise SystemExit('loadTranslations needle not found')\n          s = s.replace(needle, inject, 1)
+          s = add_once(
+              s,
+              'bool Application::init()\n{\n',
+              'bool Application::init()\n{\n    FILE* debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] init ENTER\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n',
+              'init entry')
+
+          s = add_once(
+              s,
+              '    // Init i18n\n    loadTranslations();\n',
+              '    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] BEFORE loadTranslations\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n\n    // Init i18n\n    loadTranslations();\n\n    debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        std::fprintf(debugLog, "[Borealis/Application] AFTER loadTranslations\\n");\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n',
+              'i18n boundary')
+
+          if '#include <cstdio>' not in s:
+              s = s.replace('#include <algorithm>\n', '#include <algorithm>\n#include <cstdio>\n', 1)
+
           p.write_text(s)
           PY
 
@@ -65,11 +76,12 @@ jobs:
           inject = '''    std::string localePath = BRLS_ASSET("i18n/" + locale);\n\n    FILE* debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");\n    if (debugLog)\n    {\n        bool exists = std::filesystem::exists(localePath);\n        bool isDirectory = exists && std::filesystem::is_directory(localePath);\n        std::fprintf(debugLog, "[Borealis/i18n] locale=%s path=%s exists=%d directory=%d\\n",\n            locale.c_str(), localePath.c_str(), exists ? 1 : 0, isDirectory ? 1 : 0);\n        std::fflush(debugLog);\n        std::fclose(debugLog);\n    }\n'''
           if needle not in s:
               raise SystemExit('i18n path needle not found')
-          s = s.replace(needle, inject, 1)
+          if '[Borealis/i18n] locale=%s path=%s exists' not in s:
+              s = s.replace(needle, inject, 1)
           p.write_text(s)
           PY
 
-      - name: Verify full Borealis application implementation and diagnostics
+      - name: Verify diagnostics and implementations
         working-directory: switch/borealis
         run: |
           echo "=== BOREALIS DIAGNOSTIC BUILD ==="
@@ -83,7 +95,6 @@ jobs:
           grep -q 'Application::setGlobalQuit' library/lib/core/application.cpp
           grep -q 'Application::getLocale' library/lib/core/application.cpp
           grep -q 'init ENTER' library/lib/core/application.cpp
-          grep -q 'platform CREATED' library/lib/core/application.cpp
           grep -q 'BEFORE loadTranslations' library/lib/core/application.cpp
           grep -q 'AFTER loadTranslations' library/lib/core/application.cpp
           grep -q 'locale=%s path=%s exists' library/lib/core/i18n.cpp
