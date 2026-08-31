@@ -16,14 +16,14 @@ static void log_stage(const char* stage)
     std::fflush(g_log);
 }
 
-class TabFrameTestActivity : public brls::Activity
+class TabFrameTabTestActivity : public brls::Activity
 {
   public:
     brls::View* createContentView() override
     {
-        log_stage("BEFORE TabFrame XML createFromXMLResource");
-        brls::View* view = brls::View::createFromXMLResource("activity/tabframe_test.xml");
-        log_stage(view ? "AFTER TabFrame XML createFromXMLResource OK" : "AFTER TabFrame XML createFromXMLResource NULL");
+        log_stage("BEFORE TabFrame+Tab XML createFromXMLResource");
+        brls::View* view = brls::View::createFromXMLResource("activity/tabframe_tab_test.xml");
+        log_stage(view ? "AFTER TabFrame+Tab XML createFromXMLResource OK" : "AFTER TabFrame+Tab XML createFromXMLResource NULL");
         return view;
     }
 };
@@ -66,13 +66,13 @@ int main(int argc, char* argv[])
 
     brls::Application::setGlobalQuit(false);
 
-    log_stage("BEFORE TabFrameTestActivity construction");
-    TabFrameTestActivity* activity = new TabFrameTestActivity();
-    log_stage("AFTER TabFrameTestActivity construction");
+    log_stage("BEFORE TabFrameTabTestActivity construction");
+    TabFrameTabTestActivity* activity = new TabFrameTabTestActivity();
+    log_stage("AFTER TabFrameTabTestActivity construction");
 
-    log_stage("BEFORE pushActivity(tabframe)");
+    log_stage("BEFORE pushActivity(tabframe+tab)");
     brls::Application::pushActivity(activity);
-    log_stage("AFTER pushActivity(tabframe)");
+    log_stage("AFTER pushActivity(tabframe+tab)");
 
     log_stage("BEFORE mainLoop");
     int loopCount = 0;
