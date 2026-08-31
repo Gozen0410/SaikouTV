@@ -31,6 +31,22 @@ jobs:
         run: |
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
 
+      - name: Instrument pushActivity
+        working-directory: switch/borealis
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('library/lib/core/application.cpp')
+          s = p.read_text()
+          old = '''void Application::pushActivity(Activity* activity, TransitionAnimation animation)\n{\n    Application::blockInputs();\n\n    // Create the activity content view\n    activity->setContentView(activity->createContentView());\n    activity->onContentAvailable();\n'''
+          new = '''void Application::pushActivity(Activity* activity, TransitionAnimation animation)\n{\n    Logger::info("[Diag] pushActivity ENTER");\n    Logger::info("[Diag] BEFORE blockInputs");\n    Application::blockInputs();\n    Logger::info("[Diag] AFTER blockInputs");\n\n    // Create the activity content view\n    Logger::info("[Diag] BEFORE createContentView");\n    View* createdContentView = activity->createContentView();\n    Logger::info("[Diag] AFTER createContentView");\n    Logger::info("[Diag] BEFORE setContentView");\n    activity->setContentView(createdContentView);\n    Logger::info("[Diag] AFTER setContentView");\n    Logger::info("[Diag] BEFORE onContentAvailable");\n    activity->onContentAvailable();\n    Logger::info("[Diag] AFTER onContentAvailable");\n'''
+          if old not in s:
+              raise SystemExit('pushActivity anchor not found')
+          p.write_text(s.replace(old, new, 1))
+          print('pushActivity instrumentation applied')
+          PY
+          grep -n '\[Diag\]' library/lib/core/application.cpp
+
       - name: Verify ROMFS payload
         working-directory: switch
         run: |
@@ -38,7 +54,8 @@ jobs:
           find romfs -type f -print | sort
           test -d romfs/i18n/en-US
           test -f romfs/i18n/en-US/brls.json
-          echo "i18n payload present"
+          test -f romfs/xml/activity/main.xml
+          echo "ROMFS payload present"
 
       - name: Verify configuration
         working-directory: switch
@@ -47,6 +64,8 @@ jobs:
           grep -q 'ROMFS_DEPS' Makefile
           grep -q 'SwitchPlatform constructor START' borealis/library/lib/platforms/switch/switch_platform.cpp
           grep -q 'SwitchPlatform constructor END' borealis/library/lib/platforms/switch/switch_platform.cpp
+          grep -q '\[Diag\] BEFORE createContentView' borealis/library/lib/core/application.cpp
+          grep -q '\[Diag\] AFTER createContentView' borealis/library/lib/core/application.cpp
           echo "DEVKITPRO=${DEVKITPRO}"
           grep -nE 'NROFLAGS|ROMFS|elf2nro' Makefile "${DEVKITPRO}/libnx/switch_rules" || true
 
@@ -69,21 +88,10 @@ jobs:
             --nacp=saikou_switch.nacp \
             --romfsdir="${PWD}/romfs"
           test -s saikou_switch.nro
-          echo "=== NRO PACKAGING ==="
           ls -lh saikou_switch.nro
-          echo "ROMFS files packaged from: ${PWD}/romfs"
-          find romfs -type f -print | sort
-
-      - name: Inspect build
-        working-directory: switch
-        run: |
-          ls -lh saikou_switch.nro saikou_switch.elf saikou_switch.nacp
-          echo "ROMFS files: $(find romfs -type f | wc -l)"
 
       - name: Upload NRO
         uses: actions/upload-artifact@v4
         with:
           name: saikou-switch
           path: switch/*.nro
-
-# Trigger diagnostic build for the latest pushActivity instrumentation.
