@@ -1,115 +1,69 @@
 #include <borealis.hpp>
 #include <switch.h>
-
 #include <cstdio>
 #include <cstdlib>
 
 static FILE* g_log = nullptr;
-
 static void log_stage(const char* stage)
 {
-    if (!g_log)
-        g_log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
-    if (!g_log)
-        return;
+    if (!g_log) g_log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
+    if (!g_log) return;
     std::fprintf(g_log, "[Saikou] %s\n", stage);
     std::fflush(g_log);
 }
 
 class HomeActivity : public brls::Activity
 {
-  public:
+public:
     CONTENT_FROM_XML_RES("activity/main.xml");
 };
 
 int main(int argc, char* argv[])
 {
-    (void)argc;
-    (void)argv;
-
+    (void)argc; (void)argv;
     fsdevMountSdmc();
     g_log = std::fopen("sdmc:/switch/saikou_debug.log", "w");
     log_stage("entered main");
-
     brls::Logger::setLogLevel(brls::LogLevel::DEBUG);
     log_stage("logger configured");
-
     Result romfsRc = romfsInit();
-    if (R_SUCCEEDED(romfsRc))
-        log_stage("romfsInit OK");
-    else
-        log_stage("romfsInit FAILED");
-
+    log_stage(R_SUCCEEDED(romfsRc) ? "romfsInit OK" : "romfsInit FAILED");
     log_stage("closing Saikou log before Borealis init");
-    if (g_log)
-    {
-        std::fclose(g_log);
-        g_log = nullptr;
-    }
+    if (g_log) { std::fclose(g_log); g_log = nullptr; }
 
-    if (!brls::Application::init())
-    {
-        log_stage("Application::init FAILED");
-        romfsExit();
-        return EXIT_FAILURE;
-    }
-
+    if (!brls::Application::init()) return EXIT_FAILURE;
     log_stage("Application::init OK");
     brls::Application::createWindow("Saikou Switch");
     log_stage("Borealis window created");
     brls::Application::setGlobalQuit(false);
 
-    // Reproduce pushActivity() on a fresh HomeActivity, including the stages
-    // that the previous probe did not exercise: show() and giveFocus().
     log_stage("BEFORE HomeActivity construction");
     HomeActivity* activity = new HomeActivity();
     log_stage("AFTER HomeActivity construction");
 
-    log_stage("PROBE BEFORE createContentView");
+    log_stage("BEFORE createContentView");
     brls::View* content = activity->createContentView();
-    log_stage(content ? "PROBE AFTER createContentView" : "PROBE createContentView returned NULL");
-
-    log_stage("PROBE BEFORE setContentView");
+    log_stage("AFTER createContentView");
     activity->setContentView(content);
-    log_stage("PROBE AFTER setContentView");
-
-    log_stage("PROBE BEFORE onContentAvailable");
+    log_stage("AFTER setContentView");
     activity->onContentAvailable();
-    log_stage("PROBE AFTER onContentAvailable");
-
-    log_stage("PROBE BEFORE isTranslucent");
-    bool translucent = activity->isTranslucent();
-    log_stage(translucent ? "PROBE AFTER isTranslucent TRUE" : "PROBE AFTER isTranslucent FALSE");
-
-    log_stage("PROBE BEFORE resizeToFitWindow");
+    log_stage("AFTER onContentAvailable");
     activity->resizeToFitWindow();
-    log_stage("PROBE AFTER resizeToFitWindow");
-
-    log_stage("PROBE BEFORE show");
-    activity->show([] { log_stage("PROBE show callback"); }, true, activity->getShowAnimationDuration(brls::TransitionAnimation::FADE));
-    log_stage("PROBE AFTER show");
-
-    log_stage("PROBE BEFORE getDefaultFocus");
-    brls::View* defaultFocus = activity->getDefaultFocus();
-    log_stage(defaultFocus ? "PROBE AFTER getDefaultFocus NONNULL" : "PROBE AFTER getDefaultFocus NULL");
-
-    log_stage("PROBE BEFORE willAppear");
+    log_stage("AFTER resizeToFitWindow");
+    activity->show([] { log_stage("show callback"); }, true,
+                   activity->getShowAnimationDuration(brls::TransitionAnimation::FADE));
+    log_stage("AFTER show");
     activity->willAppear(true);
-    log_stage("PROBE AFTER willAppear");
+    log_stage("AFTER willAppear");
 
-    log_stage("PROBE BEFORE Application::giveFocus");
-    brls::Application::giveFocus(defaultFocus);
-    log_stage("PROBE AFTER Application::giveFocus");
+    // FINAL CONTROL: remove the HomeActivity focus target entirely.
+    // Do not call pushActivity(); if this reaches mainLoop, focus is the
+    // confirmed difference between the working probe and the crash.
+    log_stage("BEFORE giveFocus(nullptr) CONTROL");
+    brls::Application::giveFocus(nullptr);
+    log_stage("AFTER giveFocus(nullptr) CONTROL");
+    log_stage("FOCUS BYPASS COMPLETE - BEFORE mainLoop");
 
-    log_stage("PROBE ALL PUSH STAGES OK");
-
-    // We deliberately stop here. If this probe survives, the only untested
-    // part of pushActivity() is its internal stack bookkeeping, which we can
-    // then isolate separately without risking a second HomeActivity inflation.
-    delete activity;
-
-    log_stage("PROBE COMPLETE - no real pushActivity call");
-    log_stage("BEFORE mainLoop");
     int loopCount = 0;
     while (brls::Application::mainLoop())
     {
@@ -122,7 +76,7 @@ int main(int argc, char* argv[])
         }
     }
     log_stage("mainLoop returned false");
-
+    delete activity;
     romfsExit();
     return EXIT_SUCCESS;
 }
