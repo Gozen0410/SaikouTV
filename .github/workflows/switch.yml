@@ -33,6 +33,7 @@ jobs:
       - name: Verify Borealis diagnostic source
         working-directory: switch/borealis
         run: |
+          echo "=== DIAGNOSTIC BOREALIS BUILD ==="
           echo "Borealis revision: $(git rev-parse HEAD)"
           grep -n "Application::init START\|creating platform START\|loadTranslations START" library/lib/core/application.cpp
           grep -n "SwitchPlatform constructor START\|creating SwitchAudioPlayer START\|creating SwitchInputManager START\|creating SwitchFontLoader START" library/lib/platforms/switch/switch_platform.cpp
