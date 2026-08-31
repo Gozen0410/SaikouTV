@@ -31,33 +31,48 @@ int main(int argc, char* argv[])
 
     brls::Logger::setLogLevel(brls::LogLevel::DEBUG);
     log_stage("logger configured");
+    log_stage("closing Saikou log before Borealis init");
 
-    log_stage("calling Borealis Application::init");
+    // Borealis has its own diagnostic writer. Close our handle before entering
+    // Application::init() so two libc FILE handles never access the same file.
+    if (g_log)
+    {
+        std::fclose(g_log);
+        g_log = nullptr;
+    }
+
+    // Borealis' SwitchPlatform instrumentation now owns the log during init.
     if (!brls::Application::init())
     {
-        log_stage("Application::init FAILED");
-        if (g_log)
-            std::fclose(g_log);
+        FILE* log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
+        if (log)
+        {
+            std::fprintf(log, "[Saikou] Application::init FAILED\n");
+            std::fclose(log);
+        }
         return EXIT_FAILURE;
     }
-    log_stage("Application::init OK");
 
-    log_stage("creating Borealis window");
+    FILE* log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
+    if (log)
+    {
+        std::fprintf(log, "[Saikou] Application::init OK\n");
+        std::fclose(log);
+    }
+
     brls::Application::createWindow("Saikou Switch");
-    log_stage("Borealis window created");
+    log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
+    if (log)
+    {
+        std::fprintf(log, "[Saikou] Borealis window created\n");
+        std::fclose(log);
+    }
 
     brls::Application::setGlobalQuit(true);
-    log_stage("global quit configured");
-
-    log_stage("pushing HomeActivity");
     brls::Application::pushActivity(new HomeActivity());
-    log_stage("HomeActivity pushed");
 
     while (brls::Application::mainLoop())
         ;
 
-    log_stage("main loop ended");
-    if (g_log)
-        std::fclose(g_log);
     return EXIT_SUCCESS;
 }
