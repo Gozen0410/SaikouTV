@@ -55,6 +55,22 @@ jobs:
           PY
           grep -n '\[Diag\]' library/lib/core/application.cpp
 
+      - name: Instrument giveFocus
+        working-directory: switch/borealis
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('library/lib/core/application.cpp')
+          s = p.read_text()
+          old = '''void Application::giveFocus(View* view)\n{\n    View* oldFocus = Application::currentFocus;\n    View* newFocus = view ? view->getDefaultFocus() : nullptr;\n\n    if (oldFocus != newFocus)\n    {\n        if (oldFocus)\n            oldFocus->onFocusLost();\n\n        Application::currentFocus = newFocus;\n        Application::globalFocusChangeEvent.fire(newFocus);\n\n        if (newFocus)\n        {\n            newFocus->onFocusGained();\n            Logger::debug("Giving focus to {}", newFocus->describe());\n        }\n    }\n}\n'''
+          new = '''void Application::giveFocus(View* view)\n{\n    Logger::info("[FocusDiag] ENTER view={}", (void*)view);\n    View* oldFocus = Application::currentFocus;\n    Logger::info("[FocusDiag] oldFocus={}", (void*)oldFocus);\n\n    Logger::info("[FocusDiag] BEFORE view->getDefaultFocus");\n    View* newFocus = view ? view->getDefaultFocus() : nullptr;\n    Logger::info("[FocusDiag] AFTER view->getDefaultFocus newFocus={}", (void*)newFocus);\n\n    if (oldFocus != newFocus)\n    {\n        if (oldFocus)\n        {\n            Logger::info("[FocusDiag] BEFORE oldFocus->onFocusLost");\n            oldFocus->onFocusLost();\n            Logger::info("[FocusDiag] AFTER oldFocus->onFocusLost");\n        }\n\n        Application::currentFocus = newFocus;\n        Logger::info("[FocusDiag] currentFocus assigned");\n\n        Logger::info("[FocusDiag] BEFORE globalFocusChangeEvent.fire");\n        Application::globalFocusChangeEvent.fire(newFocus);\n        Logger::info("[FocusDiag] AFTER globalFocusChangeEvent.fire");\n\n        if (newFocus)\n        {\n            Logger::info("[FocusDiag] BEFORE newFocus->onFocusGained");\n            newFocus->onFocusGained();\n            Logger::info("[FocusDiag] AFTER newFocus->onFocusGained");\n            Logger::debug("Giving focus to {}", newFocus->describe());\n        }\n    }\n    else\n    {\n        Logger::info("[FocusDiag] oldFocus == newFocus; no focus callbacks");\n    }\n\n    Logger::info("[FocusDiag] EXIT");\n}\n'''
+          if old not in s:
+              raise SystemExit('giveFocus anchor not found')
+          p.write_text(s.replace(old, new, 1))
+          print('giveFocus instrumentation applied')
+          PY
+          grep -n '\[FocusDiag\]' library/lib/core/application.cpp
+
       - name: Verify ROMFS payload
         working-directory: switch
         run: |
@@ -80,6 +96,8 @@ jobs:
           grep -q 'SwitchPlatform constructor END' borealis/library/lib/platforms/switch/switch_platform.cpp
           grep -q '\[Diag\] BEFORE createContentView' borealis/library/lib/core/application.cpp
           grep -q '\[Diag\] AFTER createContentView' borealis/library/lib/core/application.cpp
+          grep -q '\[FocusDiag\] BEFORE view->getDefaultFocus' borealis/library/lib/core/application.cpp
+          grep -q '\[FocusDiag\] AFTER newFocus->onFocusGained' borealis/library/lib/core/application.cpp
           echo "DEVKITPRO=${DEVKITPRO}"
           grep -nE 'NROFLAGS|ROMFS|elf2nro' Makefile "${DEVKITPRO}/libnx/switch_rules" || true
 
