@@ -1,0 +1,5 @@
+<brls:TabFrame title="Saikou TabFrame + Tab Test">
+    <brls:Tab label="Home">
+        <brls:Label width="auto" height="auto" text="Saikou Tab Test" />
+    </brls:Tab>
+</brls:TabFrame>
