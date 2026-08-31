@@ -19,8 +19,8 @@ jobs:
         run: |
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
           cd switch/borealis
-          git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
-          git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
+          git fetch --depth 1 origin cf973a5c8a38548720b36078f8a3440197d9f18c
+          git checkout cf973a5c8a38548720b36078f8a3440197d9f18c
           cd ../..
           mkdir -p switch/romfs
           cp -a switch/borealis/resources/. switch/romfs/
@@ -30,36 +30,7 @@ jobs:
         run: |
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
 
-      - name: Instrument i18n without changing behavior
-        working-directory: switch/borealis
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('library/lib/core/i18n.cpp')
-          s = p.read_text()
-          if '#include <cstdio>' not in s:
-              s = s.replace('#include <filesystem>\n', '#include <filesystem>\n#include <cstdio>\n', 1)
-          needle = '    std::string localePath = BRLS_ASSET("i18n/" + locale);\n'
-          inject = '''    std::string localePath = BRLS_ASSET("i18n/" + locale);
-
-    FILE* debugLog = std::fopen("sdmc:/switch/saikou_debug.log", "a");
-    if (debugLog)
-    {
-        bool exists = std::filesystem::exists(localePath);
-        bool isDirectory = exists && std::filesystem::is_directory(localePath);
-        std::fprintf(debugLog, "[Borealis/i18n] locale=%s path=%s exists=%d directory=%d\\n",
-            locale.c_str(), localePath.c_str(), exists ? 1 : 0, isDirectory ? 1 : 0);
-        std::fflush(debugLog);
-        std::fclose(debugLog);
-    }
-'''
-          if needle not in s:
-              raise SystemExit('i18n path needle not found')
-          s = s.replace(needle, inject, 1)
-          p.write_text(s)
-          PY
-
-      - name: Verify diagnostic source
+      - name: Verify Borealis diagnostic source
         working-directory: switch/borealis
         run: |
           echo "=== DIAGNOSTIC BOREALIS BUILD ==="
@@ -67,9 +38,13 @@ jobs:
           grep -n "locale=%s path=%s exists" library/lib/core/i18n.cpp
           grep -n "SwitchPlatform constructor START\|SwitchPlatform constructor END" library/lib/platforms/switch/switch_platform.cpp
 
+      - name: Clean build
+        working-directory: switch
+        run: make clean
+
       - name: Build NRO
         working-directory: switch
-        run: make clean && make -j2
+        run: make -j2
 
       - name: Upload NRO
         uses: actions/upload-artifact@v4
