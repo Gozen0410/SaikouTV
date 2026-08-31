@@ -47,10 +47,20 @@ jobs:
           grep -q 'ROMFS_DEPS' Makefile
           grep -q 'SwitchPlatform constructor START' borealis/library/lib/platforms/switch/switch_platform.cpp
           grep -q 'SwitchPlatform constructor END' borealis/library/lib/platforms/switch/switch_platform.cpp
+          echo "NROFLAGS before recursive make: ${NROFLAGS:-<empty>}"
+          grep -nE 'NROFLAGS|ROMFS|elf2nro' Makefile $(DEVKITPRO)/libnx/switch_rules || true
 
-      - name: Build NRO
+      - name: Build NRO with packaging trace
         working-directory: switch
-        run: make -j2
+        run: |
+          set -eux
+          make clean
+          make -j2 V=1 2>&1 | tee build.log
+          echo "=== PACKAGING TRACE ==="
+          grep -E 'elf2nro|romfsdir|NROFLAGS|\.nro' build.log || true
+          echo "=== ELF2NRO LOCATION ==="
+          command -v elf2nro || true
+          elf2nro --help 2>&1 | head -80 || true
 
       - name: Inspect build
         working-directory: switch
