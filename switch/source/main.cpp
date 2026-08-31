@@ -16,20 +16,15 @@ static void log_stage(const char* stage)
     std::fflush(g_log);
 }
 
-class LabelActivity : public brls::Activity
+class XMLTestActivity : public brls::Activity
 {
   public:
     brls::View* createContentView() override
     {
-        log_stage("BEFORE Label construction");
-        brls::Label* label = new brls::Label();
-        log_stage("AFTER Label construction");
-
-        log_stage("BEFORE Label setText");
-        label->setText("Saikou Label Test");
-        log_stage("AFTER Label setText");
-
-        return label;
+        log_stage("BEFORE XML createFromXMLResource");
+        brls::View* view = brls::View::createFromXMLResource("activity/xml_test.xml");
+        log_stage(view ? "AFTER XML createFromXMLResource OK" : "AFTER XML createFromXMLResource NULL");
+        return view;
     }
 };
 
@@ -74,13 +69,13 @@ int main(int argc, char* argv[])
     brls::Application::setGlobalQuit(false);
     log_stage("AFTER setGlobalQuit(false)");
 
-    log_stage("BEFORE LabelActivity construction");
-    LabelActivity* activity = new LabelActivity();
-    log_stage("AFTER LabelActivity construction");
+    log_stage("BEFORE XMLTestActivity construction");
+    XMLTestActivity* activity = new XMLTestActivity();
+    log_stage("AFTER XMLTestActivity construction");
 
-    log_stage("BEFORE pushActivity(label)");
+    log_stage("BEFORE pushActivity(xml)");
     brls::Application::pushActivity(activity);
-    log_stage("AFTER pushActivity(label)");
+    log_stage("AFTER pushActivity(xml)");
 
     log_stage("BEFORE mainLoop");
     int loopCount = 0;
