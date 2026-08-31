@@ -19,8 +19,8 @@ jobs:
         run: |
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
           cd switch/borealis
-          git fetch --depth 1 origin 1bf5fe7de9515c8da1b9ceec8f113879989d08e4
-          git checkout 1bf5fe7de9515c8da1b9ceec8f113879989d08e4
+          git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
+          git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
           cd ../..
           mkdir -p switch/romfs
           cp -a switch/borealis/resources/. switch/romfs/
@@ -30,13 +30,81 @@ jobs:
         run: |
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
 
+      - name: Instrument Borealis init safely
+        working-directory: switch/borealis
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f"pattern not found in {path}: {old!r}")
+              p.write_text(s.replace(old, new, 1))
+
+          app = 'library/lib/core/application.cpp'
+          replace_once(app,
+              'namespace brls\\n{\\n\\nbool Application::init()\\n{',
+              '''namespace brls
+          {
+          
+          static void applicationInitDebug(const char* message)
+          {
+              FILE* log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
+              if (!log)
+                  return;
+              std::fprintf(log, "[Borealis/Application] %s\\n", message);
+              std::fflush(log);
+              std::fclose(log);
+          }
+          
+          bool Application::init()
+          {\n    applicationInitDebug("Application::init START");''')
+          replace_once(app,
+              'Application::platform = Platform::createPlatform();',
+              'Application::platform = Platform::createPlatform();\\n    applicationInitDebug("creating platform RETURNED");')
+          replace_once(app,
+              '    // Init i18n\\n    loadTranslations();',
+              '    applicationInitDebug("loadTranslations START");\\n    loadTranslations();\\n    applicationInitDebug("loadTranslations RETURNED");')
+          replace_once(app,
+              '    Application::inited = true;\\n    return true;',
+              '    applicationInitDebug("Application::init END");\\n    Application::inited = true;\\n    return true;')
+
+          platform = 'library/lib/core/platform.cpp'
+          replace_once(platform,
+              '#include <borealis/core/platform.hpp>',
+              '''#include <borealis/core/platform.hpp>
+          #include <cstdio>''')
+          replace_once(platform,
+              'namespace brls\\n{\\n\\nPlatform* Platform::createPlatform()',
+              '''namespace brls
+          {
+          
+          static void platformInitDebug(const char* message)
+          {
+              FILE* log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
+              if (!log)
+                  return;
+              std::fprintf(log, "[Borealis/Platform] %s\\n", message);
+              std::fflush(log);
+              std::fclose(log);
+          }
+          
+          Platform* Platform::createPlatform()''')
+          replace_once(platform,
+              '#if defined(__SWITCH__)\\n    return new SwitchPlatform();',
+              '#if defined(__SWITCH__)\\n    platformInitDebug("Switch createPlatform START");\\n    SwitchPlatform* platform = new SwitchPlatform();\\n    platformInitDebug("SwitchPlatform constructed");\\n    return platform;')
+          PY
+
       - name: Verify Borealis diagnostic source
         working-directory: switch/borealis
         run: |
           echo "=== DIAGNOSTIC BOREALIS BUILD ==="
           echo "Borealis revision: $(git rev-parse HEAD)"
-          grep -n "Application::init START\|creating platform START\|loadTranslations START" library/lib/core/application.cpp
-          grep -n "SwitchPlatform constructor START\|creating SwitchAudioPlayer START\|creating SwitchInputManager START\|creating SwitchFontLoader START" library/lib/platforms/switch/switch_platform.cpp
+          grep -n "Application::init START\|creating platform RETURNED\|loadTranslations START\|Application::init END" library/lib/core/application.cpp
+          grep -n "Switch createPlatform START\|SwitchPlatform constructed" library/lib/core/platform.cpp
+          grep -n "SwitchPlatform constructor START\|SwitchPlatform constructor END" library/lib/platforms/switch/switch_platform.cpp
 
       - name: Build NRO
         working-directory: switch
