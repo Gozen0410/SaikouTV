@@ -16,10 +16,8 @@ static void log_stage(const char* stage)
     std::fflush(g_log);
 }
 
-class HomeActivity : public brls::Activity
+class BlankActivity : public brls::Activity
 {
-  public:
-    CONTENT_FROM_XML_RES("activity/main.xml");
 };
 
 int main(int argc, char* argv[])
@@ -63,13 +61,13 @@ int main(int argc, char* argv[])
     brls::Application::setGlobalQuit(false);
     log_stage("AFTER setGlobalQuit(false)");
 
-    log_stage("BEFORE HomeActivity construction");
-    HomeActivity* home = new HomeActivity();
-    log_stage("AFTER HomeActivity construction");
+    log_stage("BEFORE BlankActivity construction");
+    BlankActivity* blank = new BlankActivity();
+    log_stage("AFTER BlankActivity construction");
 
-    log_stage("BEFORE pushActivity");
-    brls::Application::pushActivity(home);
-    log_stage("AFTER pushActivity");
+    log_stage("BEFORE pushActivity(blank)");
+    brls::Application::pushActivity(blank);
+    log_stage("AFTER pushActivity(blank)");
 
     log_stage("BEFORE mainLoop");
     int loopCount = 0;
