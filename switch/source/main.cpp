@@ -52,9 +52,12 @@ int main(int argc, char* argv[])
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
     brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
     log_stage(tabFrame ? "TABFRAME POINTER VALID AFTER PUSH" : "TABFRAME POINTER NULL AFTER PUSH");
-    // Intentionally do not call the experimental creator path in this build.
-    // The stable baseline should be the control while we isolate whether the
-    // crash is actually in creator() or in the caller's object/lifetime state.
+    if (tabFrame)
+    {
+        log_stage("BEFORE initializeFirstTab AFTER PUSH");
+        tabFrame->initializeFirstTab();
+        log_stage("AFTER initializeFirstTab AFTER PUSH");
+    }
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
