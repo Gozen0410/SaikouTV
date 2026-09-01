@@ -65,16 +65,16 @@ int main(int argc, char* argv[])
     log_stage(tabFrame ? "TABFRAME POINTER VALID AFTER PUSH" : "TABFRAME POINTER NULL AFTER PUSH");
     if (tabFrame)
     {
-        log_stage("BEFORE REAL TABFRAME CREATOR CONTROL");
+        log_stage("BEFORE TABFRAME CREATOR NULL-CHECK CONTROL");
         brls::View* content = tabFrame->createFirstTabView();
-        log_stage(content ? "REAL TABFRAME CREATOR RETURNED VIEW" : "REAL TABFRAME CREATOR RETURNED NULL");
+        log_stage(content ? "TABFRAME CREATOR RETURNED VIEW" : "TABFRAME CREATOR RETURNED NULL");
         if (content)
         {
-            log_stage("REAL TABFRAME CREATOR VIEW VALID");
+            log_stage("TABFRAME CREATOR VIEW VALID");
             delete content;
-            log_stage("REAL TABFRAME CREATOR VIEW DELETED");
+            log_stage("TABFRAME CREATOR VIEW DELETED");
         }
-        log_stage("AFTER REAL TABFRAME CREATOR CONTROL");
+        log_stage("AFTER TABFRAME CREATOR NULL-CHECK CONTROL");
     }
 
     int loopCount = 0;
