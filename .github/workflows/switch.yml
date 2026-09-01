@@ -59,7 +59,7 @@ jobs:
           active = '    View* activeTab = nullptr;\n'
           if s.count(active) != 1:
               raise SystemExit(f'expected exactly one activeTab declaration, found {s.count(active)}')
-          if 'TabViewCreator firstTabCreator = nullptr;' not in s:
+          if '    TabViewCreator firstTabCreator = nullptr;' not in s:
               s = s.replace(active, active + '    TabViewCreator firstTabCreator = nullptr;\n', 1)
           p.write_text(s)
 
