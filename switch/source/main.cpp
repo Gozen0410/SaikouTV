@@ -16,14 +16,6 @@ class HomeActivity : public brls::Activity
 {
 public:
     CONTENT_FROM_XML_RES("activity/main.xml");
-
-    // Diagnostic: focus the first Home content Box instead of TabFrame's
-    // SidebarItem. If this survives pushActivity, the crash is specifically
-    // in the SidebarItem/default-focus path.
-    brls::View* getDefaultFocus() override
-    {
-        return this->getView("home_focus");
-    }
 };
 
 int main(int argc, char* argv[])
@@ -48,9 +40,9 @@ int main(int argc, char* argv[])
     log_stage("BEFORE HomeActivity construction");
     HomeActivity* activity = new HomeActivity();
     log_stage("AFTER HomeActivity construction");
-    log_stage("BEFORE pushActivity(home) WITH SAFE HOME FOCUS");
+    log_stage("BEFORE pushActivity(home) WITH TABFRAME LAZY FOCUS");
     brls::Application::pushActivity(activity);
-    log_stage("AFTER pushActivity(home) WITH SAFE HOME FOCUS");
+    log_stage("AFTER pushActivity(home) WITH TABFRAME LAZY FOCUS");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
