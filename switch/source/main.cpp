@@ -15,9 +15,7 @@ static void log_stage(const char* stage)
 class HomeActivity : public brls::Activity
 {
 public:
-    // Keep the proven workaround exactly as-is.
     brls::View* getDefaultFocus() override { return nullptr; }
-
     brls::View* createContentView() override
     {
         return brls::View::createFromXMLResource("activity/main.xml");
@@ -50,18 +48,13 @@ int main(int argc, char* argv[])
     brls::Application::pushActivity(activity);
     log_stage("AFTER pushActivity(home) WITH FOCUS BYPASS");
 
-    // This deliberately happens AFTER pushActivity() has returned. The
-    // Activity lifecycle calls onContentAvailable() from inside pushActivity,
-    // so tab content must not be materialized from that callback.
     brls::View* root = activity->getContentView();
+    log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
     brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
     log_stage(tabFrame ? "TABFRAME POINTER VALID AFTER PUSH" : "TABFRAME POINTER NULL AFTER PUSH");
-    if (tabFrame)
-    {
-        log_stage("BEFORE initializeFirstTab AFTER PUSH");
-        tabFrame->initializeFirstTab();
-        log_stage("AFTER initializeFirstTab AFTER PUSH");
-    }
+    // Intentionally do not call the experimental creator path in this build.
+    // The stable baseline should be the control while we isolate whether the
+    // crash is actually in creator() or in the caller's object/lifetime state.
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
