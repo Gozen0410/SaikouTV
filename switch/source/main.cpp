@@ -51,32 +51,18 @@ int main(int argc, char* argv[])
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
 
-    // Final isolation step: do not touch TabFrame at all. Inflate the already
-    // proven Home XML into an independent Box and keep it alive for one loop.
-    log_stage("BEFORE HOME CONTENT XML");
-    brls::View* homeContent = brls::View::createFromXMLResource("activity/home.xml");
-    log_stage(homeContent ? "HOME CONTENT XML RETURNED VIEW" : "HOME CONTENT XML RETURNED NULL");
-    if (homeContent)
+    // Control: the current crash occurs before createFromXMLResource(), so do
+    // not exercise the TabFrame or the Home XML parser at all in this build.
+    log_stage("BEFORE KNOWN GOOD EMPTY BOX");
+    brls::Box* host = new brls::Box();
+    log_stage(host ? "KNOWN GOOD EMPTY BOX CREATED" : "KNOWN GOOD EMPTY BOX NULL");
+    if (host)
     {
-        log_stage("HOME CONTENT XML VIEW VALID");
-        brls::Box* host = new brls::Box();
-        log_stage(host ? "HOME HOST BOX CREATED" : "HOME HOST BOX NULL");
-        if (host)
-        {
-            host->addView(homeContent);
-            log_stage("HOME CONTENT ADDED TO HOST BOX");
-            homeContent = nullptr; // host owns it now
-            log_stage("HOME CONTENT OWNERSHIP TRANSFERRED");
-            delete host;
-            log_stage("HOME HOST BOX DELETED");
-        }
-        else
-        {
-            delete homeContent;
-            log_stage("HOME CONTENT XML VIEW DELETED AFTER HOST FAILURE");
-        }
+        log_stage("BEFORE EMPTY BOX DELETION");
+        delete host;
+        log_stage("AFTER EMPTY BOX DELETION");
     }
-    log_stage("AFTER HOME CONTENT XML");
+    log_stage("AFTER KNOWN GOOD EMPTY BOX");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
