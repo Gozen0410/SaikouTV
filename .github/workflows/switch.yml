@@ -36,15 +36,32 @@ jobs:
           sed -i 's/    View\* getDefaultFocus();/    virtual View* getDefaultFocus();/' library/include/borealis/core/activity.hpp
           python3 - <<'PY'
           from pathlib import Path
+
+          h = Path('library/include/borealis/views/tab_frame.hpp')
+          s = h.read_text()
+          anchor = '    View* activeTab = nullptr;\n'
+          replacement = '    View* activeTab = nullptr;\n    TabViewCreator initialTabCreator;\n'
+          if anchor not in s:
+              raise SystemExit('TabFrame header anchor not found')
+          h.write_text(s.replace(anchor, replacement, 1))
+
           p = Path('library/lib/views/tab_frame.cpp')
           s = p.read_text()
-          old = '''        this->activeTab = newContent;\n    });\n}\n'''
-          new = '''        this->activeTab = newContent;\n    });\n\n    // Initialize the first tab immediately. Normally the sidebar focus\n    // activates it, but HomeActivity may deliberately focus its content.\n    if (this->activeTab == nullptr)\n    {\n        Box* contentView = (Box*)this->contentView;\n        View* newContent = creator();\n        if (newContent)\n        {\n            newContent->setGrow(1.0f);\n            contentView->addView(newContent);\n            this->activeTab = newContent;\n        }\n    }\n}\n'''
-          if old not in s:
-              raise SystemExit('TabFrame insertion anchor not found')
-          p.write_text(s.replace(old, new, 1))
+          anchor = '''void TabFrame::addTab(std::string label, TabViewCreator creator)\n{\n    this->sidebar->addItem(label, [this, creator](brls::View* view) {'''
+          replacement = '''void TabFrame::addTab(std::string label, TabViewCreator creator)\n{\n    if (!this->initialTabCreator)\n        this->initialTabCreator = creator;\n\n    this->sidebar->addItem(label, [this, creator](brls::View* view) {'''
+          if anchor not in s:
+              raise SystemExit('TabFrame addTab anchor not found')
+          s = s.replace(anchor, replacement, 1)
+
+          marker = '''void TabFrame::addSeparator()\n{'''
+          method = '''View* TabFrame::getDefaultFocus()\n{\n    // The stock implementation reaches SidebarItem first. On Switch that\n    // path crashes before the first tab content is active. Lazily create the\n    // first tab here, after the TabFrame is attached to the activity tree.\n    if (!this->activeTab && this->initialTabCreator)\n    {\n        Box* contentView = (Box*)this->contentView;\n        View* newContent = this->initialTabCreator();\n\n        if (newContent)\n        {\n            newContent->setGrow(1.0f);\n            contentView->addView(newContent);\n            this->activeTab = newContent;\n        }\n    }\n\n    if (this->activeTab)\n        return this->activeTab->getDefaultFocus();\n\n    return nullptr;\n}\n\n'''
+          if marker not in s:
+              raise SystemExit('TabFrame method insertion anchor not found')
+          s = s.replace(marker, method + marker, 1)
+          p.write_text(s)
           PY
-          grep -n -A18 -B4 'Initialize the first tab immediately' library/lib/views/tab_frame.cpp
+          grep -n -A24 -B4 'View\* TabFrame::getDefaultFocus' library/lib/views/tab_frame.cpp
+          grep -n 'initialTabCreator' library/include/borealis/views/tab_frame.hpp
       - name: Build ELF
         working-directory: switch
         run: |
