@@ -49,9 +49,9 @@ jobs:
               raise SystemExit(f'expected exactly one Activity focus declaration, found {s.count(old)}')
           p.write_text(s.replace(old, new, 1))
 
-          # Store only the first creator. We do NOT invoke it from addTab();
-          # addTab() must remain in its proven original form. Saikou calls the
-          # new method only after Application::pushActivity() returns.
+          # Add a post-push initialization hook without changing TabFrame::addTab().
+          # The original addTab() path is known-good and must remain byte-for-byte
+          # equivalent; only remember the first XML element for later creation.
           p = Path('library/include/borealis/views/tab_frame.hpp')
           s = p.read_text()
           old = '    void addTab(std::string label, TabViewCreator creator);\n    void addSeparator();'
@@ -60,29 +60,33 @@ jobs:
               raise SystemExit(f'expected exactly one TabFrame declaration anchor, found {s.count(old)}')
           s = s.replace(old, new, 1)
           old = '    View* activeTab = nullptr;'
-          new = '    View* activeTab = nullptr;\n    TabViewCreator firstTabCreator = nullptr;'
+          new = '    View* activeTab = nullptr;\n    tinyxml2::XMLElement* firstTabElement = nullptr;'
           if s.count(old) != 1:
               raise SystemExit(f'expected exactly one activeTab declaration, found {s.count(old)}')
           p.write_text(s.replace(old, new, 1))
 
           p = Path('library/lib/views/tab_frame.cpp')
           s = p.read_text()
-          old = 'void TabFrame::addTab(std::string label, TabViewCreator creator)\n{\n    this->sidebar->addItem(label, [this, creator](brls::View* view) {'
-          new = 'void TabFrame::addTab(std::string label, TabViewCreator creator)\n{\n    if (!this->firstTabCreator)\n        this->firstTabCreator = creator;\n\n    this->sidebar->addItem(label, [this, creator](brls::View* view) {'
+          # Leave addTab() completely untouched. Record the first XML element in
+          # handleXMLElement(), where the element is already available naturally.
+          old = '        if (viewElement)\n        {\n            this->addTab(label, [viewElement] {'
+          new = '        if (viewElement)\n        {\n            if (!this->firstTabElement)\n                this->firstTabElement = viewElement;\n\n            this->addTab(label, [viewElement] {'
           if s.count(old) != 1:
-              raise SystemExit(f'expected exactly one addTab start anchor, found {s.count(old)}')
+              raise SystemExit(f'expected exactly one Tab XML anchor, found {s.count(old)}')
           s = s.replace(old, new, 1)
 
           anchor = 'void TabFrame::addSeparator()\n{'
-          method = '''void TabFrame::initializeFirstTab()\n{\n    if (this->activeTab || !this->firstTabCreator)\n        return;\n\n    View* initialContent = this->firstTabCreator();\n    if (!initialContent)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    initialContent->setGrow(1.0f);\n    contentView->addView(initialContent);\n    this->activeTab = initialContent;\n}\n\n'''
+          method = '''void TabFrame::initializeFirstTab()\n{\n    if (this->activeTab || !this->firstTabElement)\n        return;\n\n    View* initialContent = View::createFromXMLElement(this->firstTabElement);\n    if (!initialContent)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    initialContent->setGrow(1.0f);\n    contentView->addView(initialContent);\n    this->activeTab = initialContent;\n}\n\n'''
           if s.count(anchor) != 1:
               raise SystemExit(f'expected exactly one addSeparator anchor, found {s.count(anchor)}')
           p.write_text(s.replace(anchor, method + anchor, 1))
           PY
 
-          grep -n -A18 'void TabFrame::initializeFirstTab' library/lib/views/tab_frame.cpp
-          grep -n -A30 'void TabFrame::addTab' library/lib/views/tab_frame.cpp
-          test "$(grep -c 'initialContent = this->firstTabCreator();' library/lib/views/tab_frame.cpp)" -eq 1
+          # Verify that addTab() itself was not modified by this experiment.
+          test "$(grep -c 'void TabFrame::addTab(std::string label, TabViewCreator creator)' library/lib/views/tab_frame.cpp)" -eq 1
+          test "$(grep -c 'firstTabElement = viewElement' library/lib/views/tab_frame.cpp)" -eq 1
+          test "$(grep -c 'initialContent = View::createFromXMLElement' library/lib/views/tab_frame.cpp)" -eq 1
+          ! grep -R -n 'firstTabCreator\|initialContent = creator' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
           git diff --check
       - name: Build ELF
         working-directory: switch
