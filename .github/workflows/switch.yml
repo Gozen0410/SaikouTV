@@ -16,10 +16,11 @@ jobs:
         uses: actions/checkout@v4
       - name: Fetch Borealis
         run: |
+          set -eux
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
           cd switch/borealis
-          git fetch --depth 1 origin ed40ad9fbf27ce656ad56f34f2122e078dd942b1
-          git checkout ed40ad9fbf27ce656ad56f34f2122e078dd942b1
+          git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
+          git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
           cd ../..
           rm -rf /tmp/saikou-romfs
           cp -a switch/romfs /tmp/saikou-romfs
@@ -34,8 +35,28 @@ jobs:
           set -eux
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
           sed -i 's/    View\* getDefaultFocus();/    virtual View* getDefaultFocus();/' library/include/borealis/core/activity.hpp
-          grep -n -A2 -B2 'getDefaultFocus' library/include/borealis/core/activity.hpp
+          python3 - <<'PY'
+          from pathlib import Path
+          h = Path('library/include/borealis/views/tab_frame.hpp')
+          s = h.read_text()
+          s = s.replace('    void addSeparator();\n', '    void addSeparator();\n    void initializeFirstTab();\n')
+          s = s.replace('    View* activeTab = nullptr;\n', '    View* activeTab = nullptr;\n    TabViewCreator firstTabCreator;\n')
+          h.write_text(s)
+
+          c = Path('library/lib/views/tab_frame.cpp')
+          s = c.read_text()
+          old = 'void TabFrame::addTab(std::string label, TabViewCreator creator)\n{\n'
+          new = old + '    if (!this->firstTabCreator)\n        this->firstTabCreator = creator;\n'
+          if old not in s:
+              raise SystemExit('addTab anchor missing')
+          s = s.replace(old, new, 1)
+          marker = '\nvoid TabFrame::addSeparator()\n'
+          method = '''\nvoid TabFrame::initializeFirstTab()\n{\n    if (this->activeTab || !this->firstTabCreator)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    View* newContent = this->firstTabCreator();\n\n    if (!newContent)\n        return;\n\n    newContent->setGrow(1.0f);\n    contentView->addView(newContent);\n    this->activeTab = newContent;\n}\n'''
+          s = s.replace(marker, method + marker, 1)
+          c.write_text(s)
+          PY
           grep -n 'initializeFirstTab' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
+          grep -n -A2 -B2 'getDefaultFocus' library/include/borealis/core/activity.hpp
       - name: Build ELF
         working-directory: switch
         run: |
