@@ -1,6 +1,6 @@
 <brls:TabFrame title="Saikou Switch">
     <brls:Tab label="Home">
-        <brls:Box id="home_focus" focusable="true" width="auto" height="auto" axis="column" paddingTop="40" paddingBottom="40" paddingLeft="50" paddingRight="50">
+        <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingBottom="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="Saikou Switch" fontSize="42" horizontalAlign="center" />
             <brls:Label width="auto" height="auto" text="Your anime, rebuilt for Nintendo Switch" marginTop="20" horizontalAlign="center" />
             <brls:Separator marginTop="35" marginBottom="35" />
