@@ -51,21 +51,32 @@ int main(int argc, char* argv[])
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
 
-    // Public-API-only content wiring. Do not access TabFrame internals.
-    brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
-    log_stage(tabFrame ? "TABFRAME POINTER VALID AFTER PUSH" : "TABFRAME POINTER NULL AFTER PUSH");
-    if (tabFrame)
+    // Final isolation step: do not touch TabFrame at all. Inflate the already
+    // proven Home XML into an independent Box and keep it alive for one loop.
+    log_stage("BEFORE HOME CONTENT XML");
+    brls::View* homeContent = brls::View::createFromXMLResource("activity/home.xml");
+    log_stage(homeContent ? "HOME CONTENT XML RETURNED VIEW" : "HOME CONTENT XML RETURNED NULL");
+    if (homeContent)
     {
-        log_stage("BEFORE HOME CONTENT XML");
-        brls::View* homeContent = brls::View::createFromXMLResource("activity/home.xml");
-        log_stage(homeContent ? "HOME CONTENT XML RETURNED VIEW" : "HOME CONTENT XML RETURNED NULL");
-        if (homeContent)
+        log_stage("HOME CONTENT XML VIEW VALID");
+        brls::Box* host = new brls::Box();
+        log_stage(host ? "HOME HOST BOX CREATED" : "HOME HOST BOX NULL");
+        if (host)
         {
-            log_stage("BEFORE PUBLIC setContentView(home)");
-            tabFrame->setContentView(homeContent);
-            log_stage("AFTER PUBLIC setContentView(home)");
+            host->addView(homeContent);
+            log_stage("HOME CONTENT ADDED TO HOST BOX");
+            homeContent = nullptr; // host owns it now
+            log_stage("HOME CONTENT OWNERSHIP TRANSFERRED");
+            delete host;
+            log_stage("HOME HOST BOX DELETED");
+        }
+        else
+        {
+            delete homeContent;
+            log_stage("HOME CONTENT XML VIEW DELETED AFTER HOST FAILURE");
         }
     }
+    log_stage("AFTER HOME CONTENT XML");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
