@@ -61,21 +61,19 @@ int main(int argc, char* argv[])
 
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
-    brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
-    log_stage(tabFrame ? "TABFRAME POINTER VALID AFTER PUSH" : "TABFRAME POINTER NULL AFTER PUSH");
-    if (tabFrame)
+
+    // Do not touch TabFrame internals. First prove that the exact Home XML
+    // content can be independently inflated after pushActivity() returns.
+    log_stage("BEFORE DIRECT HOME XML CONTROL");
+    brls::View* directHome = brls::View::createFromXMLResource("activity/main.xml");
+    log_stage(directHome ? "DIRECT HOME XML RETURNED VIEW" : "DIRECT HOME XML RETURNED NULL");
+    if (directHome)
     {
-        log_stage("BEFORE TABFRAME CREATOR NULL-CHECK CONTROL");
-        brls::View* content = tabFrame->createFirstTabView();
-        log_stage(content ? "TABFRAME CREATOR RETURNED VIEW" : "TABFRAME CREATOR RETURNED NULL");
-        if (content)
-        {
-            log_stage("TABFRAME CREATOR VIEW VALID");
-            delete content;
-            log_stage("TABFRAME CREATOR VIEW DELETED");
-        }
-        log_stage("AFTER TABFRAME CREATOR NULL-CHECK CONTROL");
+        log_stage("DIRECT HOME XML VIEW VALID");
+        delete directHome;
+        log_stage("DIRECT HOME XML VIEW DELETED");
     }
+    log_stage("AFTER DIRECT HOME XML CONTROL");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
