@@ -18,8 +18,8 @@ jobs:
         run: |
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
           cd switch/borealis
-          git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
-          git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
+          git fetch --depth 1 origin ed40ad9fbf27ce656ad56f34f2122e078dd942b1
+          git checkout ed40ad9fbf27ce656ad56f34f2122e078dd942b1
           cd ../..
           rm -rf /tmp/saikou-romfs
           cp -a switch/romfs /tmp/saikou-romfs
@@ -35,6 +35,7 @@ jobs:
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
           sed -i 's/    View\* getDefaultFocus();/    virtual View* getDefaultFocus();/' library/include/borealis/core/activity.hpp
           grep -n -A2 -B2 'getDefaultFocus' library/include/borealis/core/activity.hpp
+          grep -n 'initializeFirstTab' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
       - name: Build ELF
         working-directory: switch
         run: |
