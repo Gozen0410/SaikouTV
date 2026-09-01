@@ -51,18 +51,21 @@ int main(int argc, char* argv[])
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
 
-    // Known-good control: inflate the exact Home XML after pushActivity().
-    // This must remain passing before we attempt to wire content into TabFrame.
-    log_stage("BEFORE DIRECT HOME XML CONTROL");
-    brls::View* directHome = brls::View::createFromXMLResource("activity/main.xml");
-    log_stage(directHome ? "DIRECT HOME XML RETURNED VIEW" : "DIRECT HOME XML RETURNED NULL");
-    if (directHome)
+    // Public-API-only content wiring. Do not access TabFrame internals.
+    brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
+    log_stage(tabFrame ? "TABFRAME POINTER VALID AFTER PUSH" : "TABFRAME POINTER NULL AFTER PUSH");
+    if (tabFrame)
     {
-        log_stage("DIRECT HOME XML VIEW VALID");
-        delete directHome;
-        log_stage("DIRECT HOME XML VIEW DELETED");
+        log_stage("BEFORE HOME CONTENT XML");
+        brls::View* homeContent = brls::View::createFromXMLResource("activity/home.xml");
+        log_stage(homeContent ? "HOME CONTENT XML RETURNED VIEW" : "HOME CONTENT XML RETURNED NULL");
+        if (homeContent)
+        {
+            log_stage("BEFORE PUBLIC setContentView(home)");
+            tabFrame->setContentView(homeContent);
+            log_stage("AFTER PUBLIC setContentView(home)");
+        }
     }
-    log_stage("AFTER DIRECT HOME XML CONTROL");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
