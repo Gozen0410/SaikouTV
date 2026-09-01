@@ -48,50 +48,7 @@ jobs:
           if s.count(old) != 1:
               raise SystemExit(f'expected exactly one Activity focus declaration, found {s.count(old)}')
           p.write_text(s.replace(old, new, 1))
-
-          p = Path('library/include/borealis/views/tab_frame.hpp')
-          s = p.read_text()
-          decl = '    void addTab(std::string label, TabViewCreator creator);\n    void addSeparator();'
-          if s.count(decl) != 1:
-              raise SystemExit(f'expected exactly one original TabFrame declaration anchor, found {s.count(decl)}')
-          if 'View* createFirstTabView();' not in s:
-              s = s.replace(decl, decl + '\n\n    View* createFirstTabView();', 1)
-          active = '    View* activeTab = nullptr;\n'
-          if s.count(active) != 1:
-              raise SystemExit(f'expected exactly one activeTab declaration, found {s.count(active)}')
-          if 'TabViewCreator firstTabCreator = nullptr;' not in s:
-              s = s.replace(active, active + '    TabViewCreator firstTabCreator = nullptr;\n', 1)
-          p.write_text(s)
-
-          p = Path('library/lib/views/tab_frame.cpp')
-          s = p.read_text()
-          include_anchor = '#include <borealis/views/tab_frame.hpp>\n'
-          if s.count(include_anchor) != 1:
-              raise SystemExit('expected exactly one tab_frame include anchor')
-          if '#include <tinyxml2.h>' not in s:
-              s = s.replace(include_anchor, include_anchor + '#include <tinyxml2.h>\n', 1)
-
-          old = '''        if (viewElement)\n        {\n            this->addTab(label, [viewElement] {\n                return View::createFromXMLElement(viewElement);\n            });\n\n            if (viewElement->NextSiblingElement())\n                fatal("\\\"brls:Tab\\\" can only contain one child element");\n        }'''
-          new = '''        if (viewElement)\n        {\n            tinyxml2::XMLPrinter printer;\n            viewElement->Accept(&printer);\n            std::string viewXML = printer.CStr();\n\n            TabViewCreator creator = [viewXML] {\n                return View::createFromXMLString(viewXML);\n            };\n\n            if (!this->firstTabCreator)\n                this->firstTabCreator = creator;\n\n            this->addTab(label, creator);\n\n            if (viewElement->NextSiblingElement())\n                fatal("\\\"brls:Tab\\\" can only contain one child element");\n        }'''
-          if s.count(old) != 1:
-              raise SystemExit(f'expected exactly one original XML tab creator block, found {s.count(old)}')
-          s = s.replace(old, new, 1)
-
-          anchor = 'void TabFrame::addSeparator()\n{'
-          method = '''View* TabFrame::createFirstTabView()\n{\n    return this->firstTabCreator ? this->firstTabCreator() : nullptr;\n}\n\n'''
-          if s.count(anchor) != 1:
-              raise SystemExit(f'expected exactly one addSeparator anchor, found {s.count(anchor)}')
-          if 'View* TabFrame::createFirstTabView()' not in s:
-              s = s.replace(anchor, method + anchor, 1)
-          p.write_text(s)
           PY
-
-          grep -F -n 'View* createFirstTabView();' library/include/borealis/views/tab_frame.hpp
-          grep -F -n 'View* TabFrame::createFirstTabView' library/lib/views/tab_frame.cpp
-          test "$(grep -F -c 'TabViewCreator creator = [viewXML]' library/lib/views/tab_frame.cpp)" -eq 1
-          test "$(grep -F -c 'View::createFromXMLString(viewXML)' library/lib/views/tab_frame.cpp)" -eq 1
-          test "$(grep -F -c 'TabViewCreator firstTabCreator = nullptr;' library/include/borealis/views/tab_frame.hpp)" -eq 1
-          ! grep -R -n 'initializeFirstTab\|firstTabElement\|\[viewElement\]' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
           git diff --check
       - name: Build ELF
         working-directory: switch
