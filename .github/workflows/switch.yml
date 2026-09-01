@@ -35,28 +35,26 @@ jobs:
           set -eux
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
           sed -i 's/    View\* getDefaultFocus();/    virtual View* getDefaultFocus();/' library/include/borealis/core/activity.hpp
+
           python3 - <<'PY'
           from pathlib import Path
-          h = Path('library/include/borealis/views/tab_frame.hpp')
-          s = h.read_text()
-          s = s.replace('    void addSeparator();\n', '    void addSeparator();\n    void initializeFirstTab();\n')
-          s = s.replace('    View* activeTab = nullptr;\n', '    View* activeTab = nullptr;\n    TabViewCreator firstTabCreator;\n')
-          h.write_text(s)
+          p = Path('library/lib/views/tab_frame.cpp')
+          s = p.read_text()
 
-          c = Path('library/lib/views/tab_frame.cpp')
-          s = c.read_text()
-          old = 'void TabFrame::addTab(std::string label, TabViewCreator creator)\n{\n'
-          new = old + '    if (!this->firstTabCreator)\n        this->firstTabCreator = creator;\n'
-          if old not in s:
-              raise SystemExit('addTab anchor missing')
-          s = s.replace(old, new, 1)
-          marker = '\nvoid TabFrame::addSeparator()\n'
-          method = '''\nvoid TabFrame::initializeFirstTab()\n{\n    if (this->activeTab || !this->firstTabCreator)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    View* newContent = this->firstTabCreator();\n\n    if (!newContent)\n        return;\n\n    newContent->setGrow(1.0f);\n    contentView->addView(newContent);\n    this->activeTab = newContent;\n}\n'''
-          s = s.replace(marker, method + marker, 1)
-          c.write_text(s)
+          anchor = '''        this->activeTab = newContent;\n    });\n}'''
+          replacement = '''        this->activeTab = newContent;\n    });\n\n    // Activity focus is deliberately bypassed. Materialize the first tab\n    // immediately while the XML element captured by creator is still valid.\n    if (!this->activeTab)\n    {\n        View* newContent = creator();\n        if (newContent)\n        {\n            newContent->setGrow(1.0f);\n            Box* contentView = (Box*)this->contentView;\n            contentView->addView(newContent);\n            this->activeTab = newContent;\n        }\n    }\n}'''
+
+          if s.count(anchor) != 1:
+              raise SystemExit(f'expected exactly one addTab tail anchor, found {s.count(anchor)}')
+          s = s.replace(anchor, replacement, 1)
+          p.write_text(s)
           PY
-          grep -n 'initializeFirstTab' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
-          grep -n -A2 -B2 'getDefaultFocus' library/include/borealis/core/activity.hpp
+
+          # Verify the patch is minimal: no new TabFrame API/state and no
+          # initializeFirstTab symbol should exist anywhere in the tree.
+          ! grep -R -n 'initializeFirstTab' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
+          grep -n -A55 -B5 'void TabFrame::addTab' library/lib/views/tab_frame.cpp
+          git diff --check
       - name: Build ELF
         working-directory: switch
         run: |
