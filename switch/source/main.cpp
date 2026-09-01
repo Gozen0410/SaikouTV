@@ -14,26 +14,13 @@ static void log_stage(const char* stage)
 
 class HomeActivity : public brls::Activity
 {
-private:
-    brls::TabFrame* tabFrame = nullptr;
-
 public:
     // Keep the proven workaround exactly as-is.
     brls::View* getDefaultFocus() override { return nullptr; }
 
     brls::View* createContentView() override
     {
-        brls::View* content = brls::View::createFromXMLResource("activity/main.xml");
-        this->tabFrame = dynamic_cast<brls::TabFrame*>(content);
-        return content;
-    }
-
-    void onContentAvailable() override
-    {
-        // This is the intended lifecycle point: the XML tree has been created,
-        // attached to the Activity, and sized, but no focus event is synthesized.
-        if (this->tabFrame)
-            this->tabFrame->initializeFirstTab();
+        return brls::View::createFromXMLResource("activity/main.xml");
     }
 };
 
@@ -62,7 +49,6 @@ int main(int argc, char* argv[])
     log_stage("BEFORE pushActivity(home) WITH FOCUS BYPASS");
     brls::Application::pushActivity(activity);
     log_stage("AFTER pushActivity(home) WITH FOCUS BYPASS");
-    log_stage("FIRST TAB INITIALIZATION RUNS VIA onContentAvailable");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
