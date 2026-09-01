@@ -54,12 +54,12 @@ jobs:
           decl = '    void addTab(std::string label, TabViewCreator creator);\n    void addSeparator();'
           if s.count(decl) != 1:
               raise SystemExit(f'expected exactly one original TabFrame declaration anchor, found {s.count(decl)}')
-          if '    View* createFirstTabView();' not in s:
+          if 'View* createFirstTabView();' not in s:
               s = s.replace(decl, decl + '\n\n    View* createFirstTabView();', 1)
           active = '    View* activeTab = nullptr;\n'
           if s.count(active) != 1:
               raise SystemExit(f'expected exactly one activeTab declaration, found {s.count(active)}')
-          if '    TabViewCreator firstTabCreator = nullptr;' not in s:
+          if 'TabViewCreator firstTabCreator = nullptr;' not in s:
               s = s.replace(active, active + '    TabViewCreator firstTabCreator = nullptr;\n', 1)
           p.write_text(s)
 
@@ -78,7 +78,7 @@ jobs:
           s = s.replace(old, new, 1)
 
           anchor = 'void TabFrame::addSeparator()\n{'
-          method = '''View* TabFrame::createFirstTabView()\n{\n    if (!this->firstTabCreator)\n        return nullptr;\n    return this->firstTabCreator();\n}\n\n'''
+          method = '''View* TabFrame::createFirstTabView()\n{\n    return this->firstTabCreator ? this->firstTabCreator() : nullptr;\n}\n\n'''
           if s.count(anchor) != 1:
               raise SystemExit(f'expected exactly one addSeparator anchor, found {s.count(anchor)}')
           if 'View* TabFrame::createFirstTabView()' not in s:
@@ -86,10 +86,11 @@ jobs:
           p.write_text(s)
           PY
 
-          test "$(grep -c 'View\\* createFirstTabView' library/include/borealis/views/tab_frame.hpp)" -eq 1
-          test "$(grep -c 'View\\* TabFrame::createFirstTabView' library/lib/views/tab_frame.cpp)" -eq 1
-          test "$(grep -c 'TabViewCreator creator = \\[viewXML\\]' library/lib/views/tab_frame.cpp)" -eq 1
-          test "$(grep -c 'View::createFromXMLString(viewXML)' library/lib/views/tab_frame.cpp)" -eq 1
+          grep -F -n 'View* createFirstTabView();' library/include/borealis/views/tab_frame.hpp
+          grep -F -n 'View* TabFrame::createFirstTabView' library/lib/views/tab_frame.cpp
+          test "$(grep -F -c 'TabViewCreator creator = [viewXML]' library/lib/views/tab_frame.cpp)" -eq 1
+          test "$(grep -F -c 'View::createFromXMLString(viewXML)' library/lib/views/tab_frame.cpp)" -eq 1
+          test "$(grep -F -c 'TabViewCreator firstTabCreator = nullptr;' library/include/borealis/views/tab_frame.hpp)" -eq 1
           ! grep -R -n 'initializeFirstTab\|firstTabElement\|\[viewElement\]' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
           git diff --check
       - name: Build ELF
