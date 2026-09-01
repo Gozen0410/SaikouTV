@@ -65,20 +65,16 @@ int main(int argc, char* argv[])
     log_stage(tabFrame ? "TABFRAME POINTER VALID AFTER PUSH" : "TABFRAME POINTER NULL AFTER PUSH");
     if (tabFrame)
     {
-        log_stage("BEFORE MINIMAL CREATOR CONTROL");
-        brls::View* content = makeHomeDiagnosticView();
-        log_stage(content ? "MINIMAL CREATOR RETURNED VIEW" : "MINIMAL CREATOR RETURNED NULL");
+        log_stage("BEFORE REAL TABFRAME CREATOR CONTROL");
+        brls::View* content = tabFrame->createFirstTabView();
+        log_stage(content ? "REAL TABFRAME CREATOR RETURNED VIEW" : "REAL TABFRAME CREATOR RETURNED NULL");
         if (content)
         {
-            content->setGrow(1.0f);
-            log_stage("MINIMAL CREATOR SET GROW OK");
-            // TabFrame owns the content Box, so use its public Box child API only.
-            // The diagnostic intentionally does not touch the TabFrame creator machinery.
-            brls::Box* contentBox = dynamic_cast<brls::Box*>(tabFrame->getView("brls/tab_frame/sidebar"));
-            log_stage(contentBox ? "SIDEBAR LOOKUP OK" : "SIDEBAR LOOKUP NULL");
+            log_stage("REAL TABFRAME CREATOR VIEW VALID");
             delete content;
+            log_stage("REAL TABFRAME CREATOR VIEW DELETED");
         }
-        log_stage("AFTER MINIMAL CREATOR CONTROL");
+        log_stage("AFTER REAL TABFRAME CREATOR CONTROL");
     }
 
     int loopCount = 0;
