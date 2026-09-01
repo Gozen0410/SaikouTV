@@ -16,11 +16,8 @@ class HomeActivity : public brls::Activity
 {
 public:
     CONTENT_FROM_XML_RES("activity/main.xml");
-    // Temporary compatibility fix: the Switch port currently crashes when
-    // Borealis tries to focus HomeActivity's XML-derived default focus view.
-    // Returning nullptr lets the activity enter without triggering that
-    // focus callback. Navigation/focus can be restored once the underlying
-    // Borealis focus issue is fixed.
+    // Keep the proven workaround exactly as-is: do not let pushActivity()
+    // enter the broken XML-derived default-focus path.
     brls::View* getDefaultFocus() override { return nullptr; }
 };
 
@@ -46,12 +43,17 @@ int main(int argc, char* argv[])
     log_stage("BEFORE HomeActivity construction");
     HomeActivity* activity = new HomeActivity();
     log_stage("AFTER HomeActivity construction");
-
-    // Use the real HomeActivity through Borealis now that its default focus
-    // is disabled. This tests the actual application path rather than a probe.
     log_stage("BEFORE pushActivity(home) WITH FOCUS BYPASS");
     brls::Application::pushActivity(activity);
     log_stage("AFTER pushActivity(home) WITH FOCUS BYPASS");
+
+    // The stable baseline reaches mainLoop. The only new operation here is
+    // initializing the already-parsed TabFrame's first tab after pushActivity.
+    // This is deliberately done through the application activity lifecycle,
+    // not from TabFrame::addTab() or any focus callback.
+    log_stage("BEFORE first-tab initialization probe");
+    activity->onContentAvailable();
+    log_stage("AFTER first-tab initialization probe");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
