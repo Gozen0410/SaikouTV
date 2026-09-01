@@ -16,12 +16,14 @@ class HomeActivity : public brls::Activity
 {
 public:
     CONTENT_FROM_XML_RES("activity/main.xml");
-    // Temporary compatibility fix: the Switch port currently crashes when
-    // Borealis tries to focus HomeActivity's XML-derived default focus view.
-    // Returning nullptr lets the activity enter without triggering that
-    // focus callback. Navigation/focus can be restored once the underlying
-    // Borealis focus issue is fixed.
-    brls::View* getDefaultFocus() override { return nullptr; }
+
+    // Diagnostic: focus the first Home content Box instead of TabFrame's
+    // SidebarItem. If this survives pushActivity, the crash is specifically
+    // in the SidebarItem/default-focus path.
+    brls::View* getDefaultFocus() override
+    {
+        return this->getView("home_focus");
+    }
 };
 
 int main(int argc, char* argv[])
@@ -46,12 +48,9 @@ int main(int argc, char* argv[])
     log_stage("BEFORE HomeActivity construction");
     HomeActivity* activity = new HomeActivity();
     log_stage("AFTER HomeActivity construction");
-
-    // Use the real HomeActivity through Borealis now that its default focus
-    // is disabled. This tests the actual application path rather than a probe.
-    log_stage("BEFORE pushActivity(home) WITH FOCUS BYPASS");
+    log_stage("BEFORE pushActivity(home) WITH SAFE HOME FOCUS");
     brls::Application::pushActivity(activity);
-    log_stage("AFTER pushActivity(home) WITH FOCUS BYPASS");
+    log_stage("AFTER pushActivity(home) WITH SAFE HOME FOCUS");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
