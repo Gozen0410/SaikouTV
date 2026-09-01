@@ -30,7 +30,11 @@ jobs:
           rm -rf /tmp/saikou-romfs
       - name: Patch Borealis
         working-directory: switch/borealis
-        run: sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
+        run: |
+          set -eux
+          sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
+          sed -i 's/    View\* getDefaultFocus();/    virtual View* getDefaultFocus();/' library/include/borealis/core/activity.hpp
+          grep -n -A2 -B2 'getDefaultFocus' library/include/borealis/core/activity.hpp
       - name: Build ELF
         working-directory: switch
         run: |
