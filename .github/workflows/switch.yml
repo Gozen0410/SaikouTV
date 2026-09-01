@@ -40,7 +40,7 @@ jobs:
           h = Path('library/include/borealis/views/tab_frame.hpp')
           s = h.read_text()
           anchor = '    View* activeTab = nullptr;\n'
-          replacement = '    View* activeTab = nullptr;\n    TabViewCreator initialTabCreator;\n'
+          replacement = '    View* activeTab = nullptr;\n    TabViewCreator initialTabCreator;\n\n    View* getDefaultFocus() override;\n'
           if anchor not in s:
               raise SystemExit('TabFrame header anchor not found')
           h.write_text(s.replace(anchor, replacement, 1))
@@ -54,14 +54,14 @@ jobs:
           s = s.replace(anchor, replacement, 1)
 
           marker = '''void TabFrame::addSeparator()\n{'''
-          method = '''View* TabFrame::getDefaultFocus()\n{\n    // The stock implementation reaches SidebarItem first. On Switch that\n    // path crashes before the first tab content is active. Lazily create the\n    // first tab here, after the TabFrame is attached to the activity tree.\n    if (!this->activeTab && this->initialTabCreator)\n    {\n        Box* contentView = (Box*)this->contentView;\n        View* newContent = this->initialTabCreator();\n\n        if (newContent)\n        {\n            newContent->setGrow(1.0f);\n            contentView->addView(newContent);\n            this->activeTab = newContent;\n        }\n    }\n\n    if (this->activeTab)\n        return this->activeTab->getDefaultFocus();\n\n    return nullptr;\n}\n\n'''
+          method = '''View* TabFrame::getDefaultFocus()\n{\n    // Initialize the first tab only when focus is requested, after the\n    // TabFrame has been attached to the activity hierarchy.\n    if (!this->activeTab && this->initialTabCreator)\n    {\n        Box* contentView = (Box*)this->contentView;\n        View* newContent = this->initialTabCreator();\n\n        if (newContent)\n        {\n            newContent->setGrow(1.0f);\n            contentView->addView(newContent);\n            this->activeTab = newContent;\n        }\n    }\n\n    if (this->activeTab)\n        return this->activeTab->getDefaultFocus();\n\n    return nullptr;\n}\n\n'''
           if marker not in s:
               raise SystemExit('TabFrame method insertion anchor not found')
           s = s.replace(marker, method + marker, 1)
           p.write_text(s)
           PY
+          grep -n -A4 -B3 'getDefaultFocus' library/include/borealis/views/tab_frame.hpp
           grep -n -A24 -B4 'View\* TabFrame::getDefaultFocus' library/lib/views/tab_frame.cpp
-          grep -n 'initialTabCreator' library/include/borealis/views/tab_frame.hpp
       - name: Build ELF
         working-directory: switch
         run: |
