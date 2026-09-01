@@ -33,7 +33,7 @@ jobs:
         run: |
           set -eux
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
-          sed -i 's/^    View\\* getDefaultFocus();/    virtual View* getDefaultFocus();/' library/include/borealis/core/activity.hpp
+          sed -i 's/    View\* getDefaultFocus();/    virtual View* getDefaultFocus();/' library/include/borealis/core/activity.hpp
           grep -n 'getDefaultFocus' library/include/borealis/core/activity.hpp
       - name: Build ELF
         working-directory: switch
