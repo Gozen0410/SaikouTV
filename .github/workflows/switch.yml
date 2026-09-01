@@ -49,9 +49,11 @@ jobs:
               raise SystemExit(f'expected exactly one Activity focus declaration, found {s.count(old)}')
           p.write_text(s.replace(old, new, 1))
 
-          # Add a post-push initialization hook without changing TabFrame::addTab().
-          # The original addTab() path is known-good and must remain byte-for-byte
-          # equivalent; only remember the first XML element for later creation.
+          # Keep the proven TabFrame addTab lifecycle untouched. The original
+          # XML callback captured a tinyxml2 element owned by the parse document;
+          # that pointer is not safe to use after XML inflation completes.
+          # Capture a serialized copy of each tab child instead, then create the
+          # real view from that independent XML string after pushActivity returns.
           p = Path('library/include/borealis/views/tab_frame.hpp')
           s = p.read_text()
           old = '    void addTab(std::string label, TabViewCreator creator);\n    void addSeparator();'
@@ -60,33 +62,37 @@ jobs:
               raise SystemExit(f'expected exactly one TabFrame declaration anchor, found {s.count(old)}')
           s = s.replace(old, new, 1)
           old = '    View* activeTab = nullptr;'
-          new = '    View* activeTab = nullptr;\n    tinyxml2::XMLElement* firstTabElement = nullptr;'
+          new = '    View* activeTab = nullptr;\n    TabViewCreator firstTabCreator = nullptr;'
           if s.count(old) != 1:
               raise SystemExit(f'expected exactly one activeTab declaration, found {s.count(old)}')
           p.write_text(s.replace(old, new, 1))
 
           p = Path('library/lib/views/tab_frame.cpp')
           s = p.read_text()
-          # Leave addTab() completely untouched. Record the first XML element in
-          # handleXMLElement(), where the element is already available naturally.
-          old = '        if (viewElement)\n        {\n            this->addTab(label, [viewElement] {'
-          new = '        if (viewElement)\n        {\n            if (!this->firstTabElement)\n                this->firstTabElement = viewElement;\n\n            this->addTab(label, [viewElement] {'
+          include_anchor = '#include <borealis/views/tab_frame.hpp>\n'
+          if s.count(include_anchor) != 1:
+              raise SystemExit('expected exactly one tab_frame include anchor')
+          s = s.replace(include_anchor, include_anchor + '#include <tinyxml2.h>\n', 1)
+
+          old = '''        if (viewElement)\n        {\n            this->addTab(label, [viewElement] {\n                return View::createFromXMLElement(viewElement);\n            });\n\n            if (viewElement->NextSiblingElement())\n                fatal("\\\"brls:Tab\\\" can only contain one child element");\n        }'''
+          new = '''        if (viewElement)\n        {\n            tinyxml2::XMLPrinter printer;\n            viewElement->Accept(&printer);\n            std::string viewXML = printer.CStr();\n\n            TabViewCreator creator = [viewXML] {\n                return View::createFromXMLString(viewXML);\n            };\n\n            if (!this->firstTabCreator)\n                this->firstTabCreator = creator;\n\n            this->addTab(label, creator);\n\n            if (viewElement->NextSiblingElement())\n                fatal("\\\"brls:Tab\\\" can only contain one child element");\n        }'''
           if s.count(old) != 1:
-              raise SystemExit(f'expected exactly one Tab XML anchor, found {s.count(old)}')
+              raise SystemExit(f'expected exactly one XML tab creator block, found {s.count(old)}')
           s = s.replace(old, new, 1)
 
           anchor = 'void TabFrame::addSeparator()\n{'
-          method = '''void TabFrame::initializeFirstTab()\n{\n    if (this->activeTab || !this->firstTabElement)\n        return;\n\n    View* initialContent = View::createFromXMLElement(this->firstTabElement);\n    if (!initialContent)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    initialContent->setGrow(1.0f);\n    contentView->addView(initialContent);\n    this->activeTab = initialContent;\n}\n\n'''
+          method = '''void TabFrame::initializeFirstTab()\n{\n    if (this->activeTab || !this->firstTabCreator)\n        return;\n\n    View* initialContent = this->firstTabCreator();\n    if (!initialContent)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    initialContent->setGrow(1.0f);\n    contentView->addView(initialContent);\n    this->activeTab = initialContent;\n}\n\n'''
           if s.count(anchor) != 1:
               raise SystemExit(f'expected exactly one addSeparator anchor, found {s.count(anchor)}')
-          p.write_text(s.replace(anchor, method + anchor, 1))
+          s = s.replace(anchor, method + anchor, 1)
+          p.write_text(s)
           PY
 
-          # Verify that addTab() itself was not modified by this experiment.
-          test "$(grep -c 'void TabFrame::addTab(std::string label, TabViewCreator creator)' library/lib/views/tab_frame.cpp)" -eq 1
-          test "$(grep -c 'firstTabElement = viewElement' library/lib/views/tab_frame.cpp)" -eq 1
-          test "$(grep -c 'initialContent = View::createFromXMLElement' library/lib/views/tab_frame.cpp)" -eq 1
-          ! grep -R -n 'firstTabCreator\|initialContent = creator' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
+          grep -n -A24 'void TabFrame::initializeFirstTab' library/lib/views/tab_frame.cpp
+          grep -n -A35 'if (viewElement)' library/lib/views/tab_frame.cpp
+          test "$(grep -c 'TabViewCreator creator = \[viewXML\]' library/lib/views/tab_frame.cpp)" -eq 1
+          test "$(grep -c 'View::createFromXMLString(viewXML)' library/lib/views/tab_frame.cpp)" -eq 1
+          ! grep -R -n 'firstTabElement\|\[viewElement\]' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
           git diff --check
       - name: Build ELF
         working-directory: switch
