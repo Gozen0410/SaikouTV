@@ -22,17 +22,6 @@ public:
     }
 };
 
-static brls::View* makeHomeDiagnosticView()
-{
-    log_stage("CREATOR DIAG: ENTER");
-    brls::Label* label = new brls::Label();
-    log_stage(label ? "CREATOR DIAG: LABEL NEW OK" : "CREATOR DIAG: LABEL NEW NULL");
-    if (!label) return nullptr;
-    label->setText("Home Content");
-    log_stage("CREATOR DIAG: SET TEXT OK");
-    return label;
-}
-
 int main(int argc, char* argv[])
 {
     (void)argc; (void)argv;
@@ -62,8 +51,8 @@ int main(int argc, char* argv[])
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
 
-    // Do not touch TabFrame internals. First prove that the exact Home XML
-    // content can be independently inflated after pushActivity() returns.
+    // Known-good control: inflate the exact Home XML after pushActivity().
+    // This must remain passing before we attempt to wire content into TabFrame.
     log_stage("BEFORE DIRECT HOME XML CONTROL");
     brls::View* directHome = brls::View::createFromXMLResource("activity/main.xml");
     log_stage(directHome ? "DIRECT HOME XML RETURNED VIEW" : "DIRECT HOME XML RETURNED NULL");
