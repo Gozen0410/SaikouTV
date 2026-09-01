@@ -34,7 +34,17 @@ jobs:
           set -eux
           sed -i 's/swkbdConfigSetStringLenMaxExt(&config, 1);//' library/lib/platforms/switch/swkbd.cpp
           sed -i 's/    View\* getDefaultFocus();/    virtual View* getDefaultFocus();/' library/include/borealis/core/activity.hpp
-          grep -n 'getDefaultFocus' library/include/borealis/core/activity.hpp
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('library/lib/views/tab_frame.cpp')
+          s = p.read_text()
+          old = '''        this->activeTab = newContent;\n    });\n}\n'''
+          new = '''        this->activeTab = newContent;\n    });\n\n    // Initialize the first tab immediately. Normally the sidebar focus\n    // activates it, but HomeActivity may deliberately focus its content.\n    if (this->activeTab == nullptr)\n    {\n        Box* contentView = (Box*)this->contentView;\n        View* newContent = creator();\n        if (newContent)\n        {\n            newContent->setGrow(1.0f);\n            contentView->addView(newContent);\n            this->activeTab = newContent;\n        }\n    }\n}\n'''
+          if old not in s:
+              raise SystemExit('TabFrame insertion anchor not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          grep -n -A18 -B4 'Initialize the first tab immediately' library/lib/views/tab_frame.cpp
       - name: Build ELF
         working-directory: switch
         run: |
