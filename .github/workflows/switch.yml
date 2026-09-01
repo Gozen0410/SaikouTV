@@ -33,16 +33,14 @@ jobs:
         working-directory: switch/borealis
         run: |
           set -eux
-          # Preserve the two pre-existing Switch build compatibility fixes.
-          # Remove the unsupported keyboard API call without introducing diff
-          # whitespace into the vendor tree.
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('library/lib/platforms/switch/swkbd.cpp')
           lines = p.read_text().splitlines()
           needle = 'swkbdConfigSetStringLenMaxExt(&config, 1);'
           p.write_text('\n'.join(line for line in lines if needle not in line) + '\n')
-          
+
           p = Path('library/include/borealis/core/activity.hpp')
           s = p.read_text()
           old = '    View* getDefaultFocus();'
@@ -50,20 +48,41 @@ jobs:
           if s.count(old) != 1:
               raise SystemExit(f'expected exactly one Activity focus declaration, found {s.count(old)}')
           p.write_text(s.replace(old, new, 1))
-          
+
+          # Store only the first creator. We do NOT invoke it from addTab();
+          # addTab() must remain in its proven original form. Saikou calls the
+          # new method only after Application::pushActivity() returns.
+          p = Path('library/include/borealis/views/tab_frame.hpp')
+          s = p.read_text()
+          old = '    void addTab(std::string label, TabViewCreator creator);\n    void addSeparator();'
+          new = '    void addTab(std::string label, TabViewCreator creator);\n    void addSeparator();\n\n    void initializeFirstTab();'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one TabFrame declaration anchor, found {s.count(old)}')
+          s = s.replace(old, new, 1)
+          old = '    View* activeTab = nullptr;'
+          new = '    View* activeTab = nullptr;\n    TabViewCreator firstTabCreator = nullptr;'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one activeTab declaration, found {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+
           p = Path('library/lib/views/tab_frame.cpp')
           s = p.read_text()
-          anchor = '''        this->activeTab = newContent;\n    });\n}'''
-          replacement = '''        this->activeTab = newContent;\n    });\n\n    // Materialize the first tab once during TabFrame XML construction. This\n    // leaves the proven Activity nullptr-focus workaround untouched and avoids\n    // entering the Sidebar focus callback just to populate the initial page.\n    if (!this->activeTab)\n    {\n        View* initialContent = creator();\n        if (initialContent)\n        {\n            initialContent->setGrow(1.0f);\n            Box* contentView = (Box*)this->contentView;\n            contentView->addView(initialContent);\n            this->activeTab = initialContent;\n        }\n    }\n}'''
+          old = 'void TabFrame::addTab(std::string label, TabViewCreator creator)\n{\n    this->sidebar->addItem(label, [this, creator](brls::View* view) {'
+          new = 'void TabFrame::addTab(std::string label, TabViewCreator creator)\n{\n    if (!this->firstTabCreator)\n        this->firstTabCreator = creator;\n\n    this->sidebar->addItem(label, [this, creator](brls::View* view) {'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one addTab start anchor, found {s.count(old)}')
+          s = s.replace(old, new, 1)
+
+          anchor = 'void TabFrame::addSeparator()\n{'
+          method = '''void TabFrame::initializeFirstTab()\n{\n    if (this->activeTab || !this->firstTabCreator)\n        return;\n\n    View* initialContent = this->firstTabCreator();\n    if (!initialContent)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    initialContent->setGrow(1.0f);\n    contentView->addView(initialContent);\n    this->activeTab = initialContent;\n}\n\n'''
           if s.count(anchor) != 1:
-              raise SystemExit(f'expected exactly one addTab tail anchor, found {s.count(anchor)}')
-          p.write_text(s.replace(anchor, replacement, 1))
+              raise SystemExit(f'expected exactly one addSeparator anchor, found {s.count(anchor)}')
+          p.write_text(s.replace(anchor, method + anchor, 1))
           PY
 
-          # Hard verification: only the intended three vendor edits exist.
-          test "$(grep -c 'initialContent = creator();' library/lib/views/tab_frame.cpp)" -eq 1
-          ! grep -R -n 'initializeFirstTab\|firstTabCreator' library/include/borealis/views/tab_frame.hpp library/lib/views/tab_frame.cpp
-          grep -n -A45 -B5 'void TabFrame::addTab' library/lib/views/tab_frame.cpp
+          grep -n -A18 'void TabFrame::initializeFirstTab' library/lib/views/tab_frame.cpp
+          grep -n -A30 'void TabFrame::addTab' library/lib/views/tab_frame.cpp
+          test "$(grep -c 'initialContent = this->firstTabCreator();' library/lib/views/tab_frame.cpp)" -eq 1
           git diff --check
       - name: Build ELF
         working-directory: switch
