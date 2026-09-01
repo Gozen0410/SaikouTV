@@ -50,6 +50,19 @@ int main(int argc, char* argv[])
     brls::Application::pushActivity(activity);
     log_stage("AFTER pushActivity(home) WITH FOCUS BYPASS");
 
+    // This deliberately happens AFTER pushActivity() has returned. The
+    // Activity lifecycle calls onContentAvailable() from inside pushActivity,
+    // so tab content must not be materialized from that callback.
+    brls::View* root = activity->getContentView();
+    brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
+    log_stage(tabFrame ? "TABFRAME POINTER VALID AFTER PUSH" : "TABFRAME POINTER NULL AFTER PUSH");
+    if (tabFrame)
+    {
+        log_stage("BEFORE initializeFirstTab AFTER PUSH");
+        tabFrame->initializeFirstTab();
+        log_stage("AFTER initializeFirstTab AFTER PUSH");
+    }
+
     int loopCount = 0;
     while (brls::Application::mainLoop())
     {
