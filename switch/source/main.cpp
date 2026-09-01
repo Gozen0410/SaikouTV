@@ -51,18 +51,57 @@ int main(int argc, char* argv[])
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
 
-    // Control: the current crash occurs before createFromXMLResource(), so do
-    // not exercise the TabFrame or the Home XML parser at all in this build.
-    log_stage("BEFORE KNOWN GOOD EMPTY BOX");
-    brls::Box* host = new brls::Box();
-    log_stage(host ? "KNOWN GOOD EMPTY BOX CREATED" : "KNOWN GOOD EMPTY BOX NULL");
-    if (host)
+    // Final experiment: avoid the resource-file loader entirely. Create the
+    // already-known-good Home markup directly from an XML string, then attach
+    // it through the public Box child API to the existing displayed hierarchy.
+    const char* homeXml = R"xml(
+        <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingBottom="40" paddingLeft="50" paddingRight="50">
+            <brls:Label width="auto" height="auto" text="Saikou Switch" fontSize="42" horizontalAlign="center" />
+            <brls:Label width="auto" height="auto" text="Your anime, rebuilt for Nintendo Switch" marginTop="20" horizontalAlign="center" />
+            <brls:Separator marginTop="35" marginBottom="35" />
+            <brls:Label width="auto" height="auto" text="Trending" fontSize="30" />
+            <brls:Label width="auto" height="auto" text="AniList integration coming next" marginTop="20" />
+        </brls:Box>
+    )xml";
+
+    log_stage("BEFORE DIRECT HOME XML STRING");
+    brls::View* homeContent = brls::View::createFromXMLString(homeXml);
+    log_stage(homeContent ? "DIRECT HOME XML RETURNED VIEW" : "DIRECT HOME XML RETURNED NULL");
+
+    if (homeContent && root)
     {
-        log_stage("BEFORE EMPTY BOX DELETION");
-        delete host;
-        log_stage("AFTER EMPTY BOX DELETION");
+        log_stage("DIRECT HOME XML VIEW VALID");
+        auto& rootChildren = root->getChildren();
+        char marker[64];
+        std::snprintf(marker, sizeof(marker), "ROOT CHILD COUNT %zu", rootChildren.size());
+        log_stage(marker);
+
+        // TabFrame inherits Box. Its AppletFrame layout contains one outer
+        // Box; that Box contains header, content row, and footer. Use only
+        // public getChildren()/addView() APIs to reach that existing content row.
+        if (!rootChildren.empty())
+        {
+            brls::View* outer = rootChildren[0];
+            auto& outerChildren = outer->getChildren();
+            std::snprintf(marker, sizeof(marker), "OUTER CHILD COUNT %zu", outerChildren.size());
+            log_stage(marker);
+
+            if (outerChildren.size() >= 2)
+            {
+                brls::View* contentRow = outerChildren[1];
+                contentRow->addView(homeContent);
+                homeContent = nullptr;
+                log_stage("DIRECT HOME XML ADDED TO CONTENT ROW");
+            }
+        }
     }
-    log_stage("AFTER KNOWN GOOD EMPTY BOX");
+
+    if (homeContent)
+    {
+        delete homeContent;
+        log_stage("DIRECT HOME XML VIEW DELETED AFTER ATTACHMENT FAILURE");
+    }
+    log_stage("AFTER DIRECT HOME XML ATTACHMENT");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
