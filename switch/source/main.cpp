@@ -366,9 +366,40 @@ static std::vector<std::string> extract_trending_covers(const std::string& respo
 
 static std::string compact_title(const std::string& title)
 {
-    constexpr size_t kMaxTitleChars = 29;
-    if (title.size() <= kMaxTitleChars) return title;
-    return title.substr(0, kMaxTitleChars - 3) + "...";
+    constexpr size_t kMaxLineChars = 18;
+    constexpr size_t kMaxTotalChars = 36;
+
+    if (title.size() <= kMaxLineChars)
+        return title;
+
+    std::string compact = title;
+    if (compact.size() > kMaxTotalChars)
+    {
+        compact.resize(kMaxTotalChars - 3);
+        const size_t lastSpace = compact.find_last_of(' ');
+        if (lastSpace != std::string::npos && lastSpace >= 10)
+            compact.resize(lastSpace);
+        compact += "...";
+    }
+
+    size_t split = compact.find_last_of(' ', kMaxLineChars);
+    if (split == std::string::npos || split < 8)
+        split = kMaxLineChars;
+
+    std::string first = compact.substr(0, split);
+    std::string second = compact.substr(split);
+    while (!second.empty() && second.front() == ' ') second.erase(second.begin());
+
+    if (second.size() > kMaxLineChars)
+    {
+        second.resize(kMaxLineChars - 3);
+        const size_t lastSpace = second.find_last_of(' ');
+        if (lastSpace != std::string::npos && lastSpace >= 6)
+            second.resize(lastSpace);
+        second += "...";
+    }
+
+    return first + "\n" + second;
 }
 
 static void render_trending(brls::Box* homeBox, const std::string& response)
@@ -392,25 +423,22 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
 
     brls::Label* heading = new brls::Label();
     heading->setText("Trending Now");
-    heading->setFontSize(28);
-    heading->setMargins(0, 12, 0, 0);
+    heading->setFontSize(27);
+    heading->setMargins(0, 10, 0, 0);
     homeBox->addView(heading);
 
-    // Six cards are deliberately kept within the 1280px TV content area for now.
-    // This gives us reliable D-pad focus without depending on TabFrame internals
-    // or an unverified horizontal scrolling API.
     brls::Box* row = new brls::Box(brls::Axis::ROW);
     row->setGrow(0.0f);
     row->setAlignItems(brls::AlignItems::FLEX_START);
-    row->setMargins(0, 6, 0, 0);
+    row->setMargins(0, 7, 0, 0);
     homeBox->addView(row);
 
     const size_t cardCount = std::min<size_t>(titles.size(), 6);
     for (size_t i = 0; i < cardCount; ++i)
     {
         brls::Box* card = new brls::Box(brls::Axis::COLUMN);
-        card->setWidth(125);
-        card->setMargins(3, 4, 3, 0);
+        card->setWidth(124);
+        card->setMargins(2, 3, 2, 0);
         card->setFocusable(true);
         card->setHighlightPadding(5.0f);
         card->setCornerRadius(5.0f);
@@ -426,7 +454,9 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
             if (download_image(covers[i], imagePath))
             {
                 brls::Image* image = new brls::Image();
-                image->setDimensions(115, 162);
+                // AniList poster art is normally close to 2:3. Keeping the
+                // display box at exactly 2:3 prevents uneven stretching/cropping.
+                image->setDimensions(116, 174);
                 image->setScalingType(brls::ImageScalingType::CROP);
                 image->setImageFromFile(imagePath);
                 image->setFocusable(false);
@@ -440,14 +470,16 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
         {
             brls::Label* missing = new brls::Label();
             missing->setText("No image");
-            missing->setFontSize(14);
+            missing->setFontSize(13);
+            missing->setSingleLine(true);
             card->addView(missing);
         }
 
         brls::Label* title = new brls::Label();
         title->setText(compact_title(titles[i]));
-        title->setFontSize(16);
-        title->setMaxWidth(115);
+        title->setFontSize(14);
+        title->setLineHeight(17);
+        title->setMaxWidth(116);
         title->setMargins(2, 4, 2, 0);
         title->setFocusable(false);
         card->addView(title);
@@ -456,8 +488,11 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
         {
             brls::Label* detail = new brls::Label();
             detail->setText(details[i]);
-            detail->setFontSize(12);
-            detail->setMaxWidth(115);
+            detail->setFontSize(11);
+            detail->setLineHeight(14);
+            detail->setMaxWidth(116);
+            detail->setSingleLine(true);
+            detail->setMargins(2, 1, 2, 0);
             detail->setFocusable(false);
             card->addView(detail);
         }
