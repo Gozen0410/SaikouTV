@@ -66,6 +66,21 @@ struct ApiResult
     std::string response;
 };
 
+static bool api_response_is_valid(CURLcode requestRc, long httpCode, const std::string& response, const char* markerPrefix)
+{
+    char marker[128];
+    if (requestRc == CURLE_OK && httpCode >= 200 && httpCode < 300 && response.find("results") != std::string::npos)
+    {
+        std::snprintf(marker, sizeof(marker), "%s OK HTTP %ld BYTES %zu", markerPrefix, httpCode, response.size());
+        log_stage(marker);
+        return true;
+    }
+
+    std::snprintf(marker, sizeof(marker), "%s FAILED CURL %d HTTP %ld BYTES %zu", markerPrefix, static_cast<int>(requestRc), httpCode, response.size());
+    log_stage(marker);
+    return false;
+}
+
 static ApiResult run_api_probe()
 {
     ApiResult result;
@@ -140,24 +155,70 @@ static ApiResult run_api_probe()
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, api_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 
-    CURLcode requestRc = curl_easy_perform(curl);
+    bool primaryOk = false;
+    CURLcode requestRc = CURLE_OK;
     long httpCode = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
 
-    if (requestRc == CURLE_OK && httpCode >= 200 && httpCode < 300 && response.find("results") != std::string::npos)
+    for (int attempt = 1; attempt <= 3 && !primaryOk; ++attempt)
     {
-        char marker[96];
-        std::snprintf(marker, sizeof(marker), "API REQUEST OK HTTP %ld BYTES %zu", httpCode, response.size());
+        char marker[64];
+        std::snprintf(marker, sizeof(marker), "API REQUEST ATTEMPT %d", attempt);
         log_stage(marker);
+        response.clear();
+        requestRc = curl_easy_perform(curl);
+        httpCode = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+        primaryOk = api_response_is_valid(requestRc, httpCode, response, "MIRURO REQUEST");
+    }
+
+    if (primaryOk)
+    {
         result.status = "API online - trending data received";
         result.response = response;
     }
     else
     {
-        char marker[128];
-        std::snprintf(marker, sizeof(marker), "API REQUEST FAILED CURL %d HTTP %ld BYTES %zu", static_cast<int>(requestRc), httpCode, response.size());
-        log_stage(marker);
-        result.status = "API request failed - UI still running";
+        log_stage("MIRURO FAILED - STARTING ANILIST FALLBACK");
+
+        curl_easy_reset(curl);
+        response.clear();
+        const char* anilistUrl = "https://graphql.anilist.co";
+        const char* anilistBody = "{\"query\":\"query { Page(page: 1, perPage: 6) { results: media(type: ANIME, sort: TRENDING_DESC) { title { english romaji native } coverImage { large } format averageScore } } }\"}";
+
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        headers = curl_slist_append(headers, "Accept: application/json");
+
+        log_stage("BEFORE ANILIST FALLBACK REQUEST");
+        curl_easy_setopt(curl, CURLOPT_URL, anilistUrl);
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, anilistBody);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(std::strlen(anilistBody)));
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "SaikouSwitch/0.2");
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, api_write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+        requestRc = curl_easy_perform(curl);
+        httpCode = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+
+        const bool fallbackOk = api_response_is_valid(requestRc, httpCode, response, "ANILIST FALLBACK REQUEST");
+        if (fallbackOk)
+        {
+            result.status = "AniList online - trending data received";
+            result.response = response;
+        }
+        else
+        {
+            result.status = "API request failed - UI still running";
+        }
+
+        curl_slist_free_all(headers);
     }
 
     curl_easy_cleanup(curl);
@@ -454,8 +515,6 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
             if (download_image(covers[i], imagePath))
             {
                 brls::Image* image = new brls::Image();
-                // AniList poster art is normally close to 2:3. Keeping the
-                // display box at exactly 2:3 prevents uneven stretching/cropping.
                 image->setDimensions(116, 174);
                 image->setScalingType(brls::ImageScalingType::CROP);
                 image->setImageFromFile(imagePath);
