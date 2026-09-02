@@ -19,8 +19,8 @@ jobs:
           set -eux
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
           cd switch/borealis
-          git fetch --depth 1 origin 304219460a017a9d6a71661e31df31aa45425ac1
-          git checkout 304219460a017a9d6a71661e31df31aa45425ac1
+          git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
+          git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
           cd ../..
           rm -rf /tmp/saikou-romfs
           cp -a switch/romfs /tmp/saikou-romfs
@@ -48,6 +48,26 @@ jobs:
           if s.count(old) != 1:
               raise SystemExit(f'expected exactly one Activity focus declaration, found {s.count(old)}')
           p.write_text(s.replace(old, new, 1))
+
+          p = Path('library/include/borealis/views/tab_frame.hpp')
+          s = p.read_text()
+          marker = '    void addSeparator();'
+          addition = '    // Attach already-created tab content through TabFrame\'s own content container.\n    void setTabContent(View* content);\n\n'
+          if 'void setTabContent(View* content);' not in s:
+              if s.count(marker) != 1:
+                  raise SystemExit(f'expected exactly one TabFrame separator declaration, found {s.count(marker)}')
+              s = s.replace(marker, addition + marker, 1)
+              p.write_text(s)
+
+          p = Path('library/lib/views/tab_frame.cpp')
+          s = p.read_text()
+          marker = 'void TabFrame::addSeparator()'
+          method = '''void TabFrame::setTabContent(View* content)\n{\n    if (!content)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    if (!contentView)\n    {\n        delete content;\n        return;\n    }\n\n    if (this->activeTab)\n    {\n        contentView->removeView(this->activeTab);\n        this->activeTab = nullptr;\n    }\n\n    content->setGrow(1.0f);\n    contentView->addView(content);\n    this->activeTab = content;\n}\n\n'''
+          if 'void TabFrame::setTabContent(View* content)' not in s:
+              if s.count(marker) != 1:
+                  raise SystemExit(f'expected exactly one TabFrame addSeparator definition, found {s.count(marker)}')
+              s = s.replace(marker, method + marker, 1)
+              p.write_text(s)
           PY
           git diff --check
       - name: Build ELF
