@@ -19,8 +19,8 @@ jobs:
           set -eux
           git clone --depth 1 --recurse-submodules https://github.com/Gozen0410/borealis.git switch/borealis
           cd switch/borealis
-          git fetch --depth 1 origin 7ae6c2826be5f9db5140a093c8fb8832ae356919
-          git checkout 7ae6c2826be5f9db5140a093c8fb8832ae356919
+          git fetch --depth 1 origin 304219460a017a9d6a71661e31df31aa45425ac1
+          git checkout 304219460a017a9d6a71661e31df31aa45425ac1
           cd ../..
           rm -rf /tmp/saikou-romfs
           cp -a switch/romfs /tmp/saikou-romfs
