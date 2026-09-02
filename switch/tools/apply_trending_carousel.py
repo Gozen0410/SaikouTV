@@ -3,6 +3,7 @@ from pathlib import Path
 path = Path("switch/source/main.cpp")
 source = path.read_text()
 
+# Keep the proven Home UI path untouched; only replace the old trending renderer.
 start = source.find("static void render_trending(")
 end = source.find("\nint main(", start)
 if start < 0 or end < 0:
@@ -101,11 +102,13 @@ private:
             {
                 content->setTranslationX(-static_cast<float>(offset) * kCardStep);
                 const auto& children = content->getChildren();
-                const size_t focusIndex = forward
-                    ? std::min(offset + kVisibleCards - 1, children.size() - 1)
-                    : offset;
-                if (!children.empty() && focusIndex < children.size())
+                if (!children.empty())
+                {
+                    const size_t focusIndex = forward
+                        ? std::min(offset + kVisibleCards - 1, children.size() - 1)
+                        : std::min(offset, children.size() - 1);
                     brls::Application::giveFocus(children[focusIndex]);
+                }
             }
             animating = false;
         });
@@ -234,6 +237,77 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
 }
 '''
 
-path.write_text(source[:start] + replacement + source[end:])
-print("Applied trending carousel/navigation implementation")
-''
+source = source[:start] + replacement + source[end:]
+
+# API calls can legitimately receive a transient 5xx from the upstream service.
+# Retry the request with the documented explicit page parameter before declaring
+# the Home data unavailable. This does not touch the proven Borealis attachment path.
+old_request = '''    CURLcode requestRc = curl_easy_perform(curl);
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+
+    if (requestRc == CURLE_OK && httpCode >= 200 && httpCode < 300 && response.find("results") != std::string::npos)
+    {
+        char marker[96];
+        std::snprintf(marker, sizeof(marker), "API REQUEST OK HTTP %ld BYTES %zu", httpCode, response.size());
+        log_stage(marker);
+        result.status = "API online - trending data received";
+        result.response = response;
+    }
+    else
+    {
+        char marker[128];
+        std::snprintf(marker, sizeof(marker), "API REQUEST FAILED CURL %d HTTP %ld BYTES %zu", static_cast<int>(requestRc), httpCode, response.size());
+        log_stage(marker);
+        result.status = "API request failed - UI still running";
+    }
+'''
+
+new_request = '''    CURLcode requestRc = CURLE_OK;
+    long httpCode = 0;
+    bool requestSucceeded = false;
+
+    const char* urls[] = {
+        "https://miruro.zenos.my.id/trending?page=1&per_page=6",
+        "https://miruro.zenos.my.id/trending?per_page=6",
+        "https://miruro.zenos.my.id/trending?page=1&per_page=6"
+    };
+
+    for (size_t attempt = 0; attempt < 3 && !requestSucceeded; ++attempt)
+    {
+        response.clear();
+        curl_easy_setopt(curl, CURLOPT_URL, urls[attempt]);
+        log_stage(attempt == 0 ? "API REQUEST ATTEMPT 1" : (attempt == 1 ? "API REQUEST ATTEMPT 2" : "API REQUEST ATTEMPT 3"));
+        requestRc = curl_easy_perform(curl);
+        httpCode = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+
+        requestSucceeded = requestRc == CURLE_OK && httpCode >= 200 && httpCode < 300 && response.find("results") != std::string::npos;
+        if (!requestSucceeded && attempt < 2)
+            svcSleepThread(250000000);
+    }
+
+    if (requestSucceeded)
+    {
+        char marker[96];
+        std::snprintf(marker, sizeof(marker), "API REQUEST OK HTTP %ld BYTES %zu", httpCode, response.size());
+        log_stage(marker);
+        result.status = "API online - trending data received";
+        result.response = response;
+    }
+    else
+    {
+        char marker[128];
+        std::snprintf(marker, sizeof(marker), "API REQUEST FAILED CURL %d HTTP %ld BYTES %zu AFTER 3 ATTEMPTS", static_cast<int>(requestRc), httpCode, response.size());
+        log_stage(marker);
+        result.status = "API request failed - UI still running";
+    }
+'''
+
+if old_request not in source:
+    raise SystemExit("Could not locate API request block")
+source = source.replace(old_request, new_request, 1)
+
+# Preserve the existing one-build-at-a-time workflow behavior.
+path.write_text(source)
+print("Applied trending carousel plus transient API retry hardening")
