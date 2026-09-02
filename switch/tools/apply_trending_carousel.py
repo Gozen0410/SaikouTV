@@ -3,13 +3,15 @@ from pathlib import Path
 path = Path("switch/source/main.cpp")
 source = path.read_text()
 
-# Keep the proven Home UI path untouched; only replace the old trending renderer.
-start = source.find("static void render_trending(")
-end = source.find("\nint main(", start)
-if start < 0 or end < 0:
-    raise SystemExit("Could not locate render_trending() boundaries")
+# The API path is maintained in main.cpp itself. This build-time patch only
+# installs the carousel renderer; it must never try to rewrite API code.
+if "class TrendingCarouselViewport" not in source:
+    start = source.find("static void render_trending(")
+    end = source.find("\nint main(", start)
+    if start < 0 or end < 0:
+        raise SystemExit("Could not locate render_trending() boundaries")
 
-replacement = r'''class TrendingCarouselViewport : public brls::Box
+    replacement = r'''class TrendingCarouselViewport : public brls::Box
 {
 public:
     static constexpr size_t kVisibleCards = 5;
@@ -35,7 +37,7 @@ public:
 
     void registerCardAction(brls::View* card, size_t index)
     {
-        card->registerAction("Previous", brls::Key::DLEFT, [this, index](brls::View*) {
+        card->registerAction("Previous", brls::BUTTON_LEFT, [this, index](brls::View*) {
             if (index == offset && offset > 0)
             {
                 moveLeft();
@@ -44,10 +46,9 @@ public:
             return false;
         });
 
-        card->registerAction("Next", brls::Key::DRIGHT, [this, index](brls::View*) {
+        card->registerAction("Next", brls::BUTTON_RIGHT, [this, index](brls::View*) {
             if (totalCards == 0)
                 return false;
-
             const size_t visibleEnd = std::min(offset + kVisibleCards - 1, totalCards - 1);
             if (index == visibleEnd && visibleEnd + 1 < totalCards)
             {
@@ -69,11 +70,9 @@ private:
     {
         if (!content || animating || totalCards == 0)
             return;
-
         const size_t visibleEnd = std::min(offset + kVisibleCards - 1, totalCards - 1);
         if (visibleEnd + 1 >= totalCards)
             return;
-
         animateTo(offset + 1, true);
     }
 
@@ -81,7 +80,6 @@ private:
     {
         if (!content || animating || offset == 0)
             return;
-
         animateTo(offset - 1, false);
     }
 
@@ -89,7 +87,6 @@ private:
     {
         animating = true;
         const float target = -static_cast<float>(newOffset) * kCardStep;
-
         scrollX.reset(scrollX.getValue());
         scrollX.addStep(target, 220, brls::EasingFunction::quadraticOut);
         scrollX.setTickCallback([this] {
@@ -128,7 +125,6 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
     char marker[64];
     std::snprintf(marker, sizeof(marker), "TRENDING PARSE FOUND %zu TITLES", titles.size());
     log_stage(marker);
-
     if (titles.empty())
     {
         log_stage("TRENDING PARSE FOUND NO TITLES");
@@ -223,91 +219,19 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
         }
 
         viewport->registerCardAction(card, i);
-        card->registerAction("Open anime", brls::Key::A, [i](brls::View*) {
+        card->registerAction("Open anime", brls::BUTTON_A, [i](brls::View*) {
             char marker[64];
             std::snprintf(marker, sizeof(marker), "TRENDING CARD SELECTED %zu", i);
             log_stage(marker);
             return true;
         });
-
         row->addView(card);
     }
 
     log_stage("TRENDING UI ATTACHED");
 }
 '''
+    source = source[:start] + replacement + source[end:]
 
-source = source[:start] + replacement + source[end:]
-
-# API calls can legitimately receive a transient 5xx from the upstream service.
-# Retry the request with the documented explicit page parameter before declaring
-# the Home data unavailable. This does not touch the proven Borealis attachment path.
-old_request = '''    CURLcode requestRc = curl_easy_perform(curl);
-    long httpCode = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-
-    if (requestRc == CURLE_OK && httpCode >= 200 && httpCode < 300 && response.find("results") != std::string::npos)
-    {
-        char marker[96];
-        std::snprintf(marker, sizeof(marker), "API REQUEST OK HTTP %ld BYTES %zu", httpCode, response.size());
-        log_stage(marker);
-        result.status = "API online - trending data received";
-        result.response = response;
-    }
-    else
-    {
-        char marker[128];
-        std::snprintf(marker, sizeof(marker), "API REQUEST FAILED CURL %d HTTP %ld BYTES %zu", static_cast<int>(requestRc), httpCode, response.size());
-        log_stage(marker);
-        result.status = "API request failed - UI still running";
-    }
-'''
-
-new_request = '''    CURLcode requestRc = CURLE_OK;
-    long httpCode = 0;
-    bool requestSucceeded = false;
-
-    const char* urls[] = {
-        "https://miruro.zenos.my.id/trending?page=1&per_page=6",
-        "https://miruro.zenos.my.id/trending?per_page=6",
-        "https://miruro.zenos.my.id/trending?page=1&per_page=6"
-    };
-
-    for (size_t attempt = 0; attempt < 3 && !requestSucceeded; ++attempt)
-    {
-        response.clear();
-        curl_easy_setopt(curl, CURLOPT_URL, urls[attempt]);
-        log_stage(attempt == 0 ? "API REQUEST ATTEMPT 1" : (attempt == 1 ? "API REQUEST ATTEMPT 2" : "API REQUEST ATTEMPT 3"));
-        requestRc = curl_easy_perform(curl);
-        httpCode = 0;
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-
-        requestSucceeded = requestRc == CURLE_OK && httpCode >= 200 && httpCode < 300 && response.find("results") != std::string::npos;
-        if (!requestSucceeded && attempt < 2)
-            svcSleepThread(250000000);
-    }
-
-    if (requestSucceeded)
-    {
-        char marker[96];
-        std::snprintf(marker, sizeof(marker), "API REQUEST OK HTTP %ld BYTES %zu", httpCode, response.size());
-        log_stage(marker);
-        result.status = "API online - trending data received";
-        result.response = response;
-    }
-    else
-    {
-        char marker[128];
-        std::snprintf(marker, sizeof(marker), "API REQUEST FAILED CURL %d HTTP %ld BYTES %zu AFTER 3 ATTEMPTS", static_cast<int>(requestRc), httpCode, response.size());
-        log_stage(marker);
-        result.status = "API request failed - UI still running";
-    }
-'''
-
-if old_request not in source:
-    raise SystemExit("Could not locate API request block")
-source = source.replace(old_request, new_request, 1)
-
-# Preserve the existing one-build-at-a-time workflow behavior.
 path.write_text(source)
-print("Applied trending carousel plus transient API retry hardening")
+print("Trending carousel patch applied; API code left untouched")
