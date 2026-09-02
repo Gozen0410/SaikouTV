@@ -393,52 +393,57 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
     row->setMargins(8, 0, 8, 0);
     homeBox->addView(row);
 
-    brls::Box* card = new brls::Box(brls::Axis::COLUMN);
-    card->setWidth(190);
-    card->setMargins(0, 12, 0, 0);
-
-    bool imageAttached = false;
-    if (!covers.empty() && !covers[0].empty())
+    const size_t cardCount = titles.size() < 6 ? titles.size() : 6;
+    for (size_t i = 0; i < cardCount; ++i)
     {
-        const std::string imagePath = std::string(kCacheDir) + "/trending_0.jpg";
-        if (download_image(covers[0], imagePath))
+        brls::Box* card = new brls::Box(brls::Axis::COLUMN);
+        card->setWidth(145);
+        card->setMargins(4, 8, 4, 0);
+
+        bool imageAttached = false;
+        if (i < covers.size() && !covers[i].empty())
         {
-            brls::Image* image = new brls::Image();
-            image->setDimensions(180, 255);
-            image->setScalingType(brls::ImageScalingType::CROP);
-            image->setImageFromFile(imagePath);
-            card->addView(image);
-            imageAttached = true;
-            log_stage("FIRST TRENDING COVER ATTACHED");
+            char pathBuffer[128];
+            std::snprintf(pathBuffer, sizeof(pathBuffer), "%s/trending_%zu.jpg", kCacheDir, i);
+            const std::string imagePath = pathBuffer;
+            log_stage("BEFORE TRENDING CARD IMAGE DOWNLOAD");
+            if (download_image(covers[i], imagePath))
+            {
+                brls::Image* image = new brls::Image();
+                image->setDimensions(135, 190);
+                image->setScalingType(brls::ImageScalingType::CROP);
+                image->setImageFromFile(imagePath);
+                card->addView(image);
+                imageAttached = true;
+                log_stage("TRENDING CARD IMAGE ATTACHED");
+            }
         }
-    }
 
-    if (!imageAttached) log_stage("FIRST TRENDING COVER NOT ATTACHED");
+        if (!imageAttached)
+        {
+            brls::Label* missing = new brls::Label();
+            missing->setText("No image");
+            missing->setFontSize(14);
+            card->addView(missing);
+        }
 
-    brls::Label* title = new brls::Label();
-    title->setText(titles[0]);
-    title->setFontSize(20);
-    title->setMaxWidth(180);
-    title->setMargins(6, 0, 2, 0);
-    card->addView(title);
+        brls::Label* title = new brls::Label();
+        title->setText(titles[i]);
+        title->setFontSize(17);
+        title->setMaxWidth(135);
+        title->setMargins(2, 3, 2, 0);
+        card->addView(title);
 
-    if (!details.empty() && !details[0].empty())
-    {
-        brls::Label* detail = new brls::Label();
-        detail->setText(details[0]);
-        detail->setFontSize(15);
-        detail->setMaxWidth(180);
-        card->addView(detail);
-    }
+        if (i < details.size() && !details[i].empty())
+        {
+            brls::Label* detail = new brls::Label();
+            detail->setText(details[i]);
+            detail->setFontSize(13);
+            detail->setMaxWidth(135);
+            card->addView(detail);
+        }
 
-    row->addView(card);
-
-    for (size_t i = 1; i < titles.size(); ++i)
-    {
-        brls::Label* remaining = new brls::Label();
-        remaining->setText(titles[i]);
-        remaining->setFontSize(18);
-        homeBox->addView(remaining);
+        row->addView(card);
     }
 
     log_stage("TRENDING UI ATTACHED");
