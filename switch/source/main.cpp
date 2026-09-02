@@ -1,5 +1,6 @@
 #include <borealis.hpp>
 #include <borealis/views/tab_frame.hpp>
+#include <borealis/views/image.hpp>
 #include <switch.h>
 #include <curl/curl.h>
 #include <cstdio>
@@ -27,6 +28,12 @@ static size_t api_write_callback(char* ptr, size_t size, size_t nmemb, void* use
         output->append(ptr, bytes < remaining ? bytes : remaining);
     }
     return bytes;
+}
+
+static size_t file_write_callback(char* ptr, size_t size, size_t nmemb, void* userdata)
+{
+    FILE* file = static_cast<FILE*>(userdata);
+    return std::fwrite(ptr, size, nmemb, file);
 }
 
 class HomeActivity : public brls::Activity
@@ -146,9 +153,70 @@ static ApiResult run_api_probe()
     return result;
 }
 
-// Small, dependency-free JSON string extractor for the fields we need from
-// Miruro's stable trending response. This intentionally avoids adding another
-// parser/library to the working Switch build until the UI path is established.
+static bool download_image(const std::string& url, const std::string& path)
+{
+    if (url.empty()) return false;
+
+    log_stage("BEFORE COVER IMAGE DOWNLOAD");
+    Result socketRc = socketInitializeDefault();
+    bool socketOwned = false;
+    if (R_SUCCEEDED(socketRc))
+        socketOwned = true;
+    else if (socketRc != MAKERESULT(Module_Libnx, LibnxError_AlreadyInitialized))
+    {
+        log_stage("COVER IMAGE SOCKET INITIALIZE FAILED");
+        return false;
+    }
+
+    CURLcode globalRc = curl_global_init(CURL_GLOBAL_DEFAULT);
+    if (globalRc != CURLE_OK)
+    {
+        log_stage("COVER IMAGE CURL GLOBAL INIT FAILED");
+        if (socketOwned) socketExit();
+        return false;
+    }
+
+    CURL* curl = curl_easy_init();
+    FILE* file = std::fopen(path.c_str(), "wb");
+    if (!curl || !file)
+    {
+        log_stage("COVER IMAGE CURL OR FILE INIT FAILED");
+        if (file) std::fclose(file);
+        if (curl) curl_easy_cleanup(curl);
+        curl_global_cleanup();
+        if (socketOwned) socketExit();
+        return false;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SaikouSwitch/0.2");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, file);
+
+    CURLcode requestRc = curl_easy_perform(curl);
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    std::fclose(file);
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+    if (socketOwned) socketExit();
+
+    if (requestRc != CURLE_OK || httpCode < 200 || httpCode >= 300)
+    {
+        std::remove(path.c_str());
+        log_stage("COVER IMAGE DOWNLOAD FAILED");
+        return false;
+    }
+
+    log_stage("COVER IMAGE DOWNLOAD OK");
+    return true;
+}
+
 static std::string json_string_after(const std::string& text, size_t from, const char* key, size_t limit)
 {
     const std::string needle = std::string("\"") + key + "\"";
@@ -167,8 +235,7 @@ static std::string json_string_after(const std::string& text, size_t from, const
         {
             const char escaped = text[i + 1];
             if (escaped == '"' || escaped == '\\' || escaped == '/') value.push_back(escaped);
-            else if (escaped == 'n') value.push_back(' ');
-            else if (escaped == 't') value.push_back(' ');
+            else if (escaped == 'n' || escaped == 't') value.push_back(' ');
             else value.push_back(escaped);
             ++i;
             continue;
@@ -192,6 +259,14 @@ static std::string json_value_after(const std::string& text, size_t from, const 
     size_t end = start;
     while (end < limit && text[end] != ',' && text[end] != '}' && text[end] != '\n') ++end;
     return text.substr(start, end - start);
+}
+
+static std::string json_nested_string_after(const std::string& text, size_t from, const char* parentKey, const char* childKey, size_t limit)
+{
+    const std::string parent = std::string("\"") + parentKey + "\"";
+    size_t parentPos = text.find(parent, from);
+    if (parentPos == std::string::npos || parentPos >= limit) return std::string();
+    return json_string_after(text, parentPos + parent.size(), childKey, limit);
 }
 
 static std::vector<std::string> extract_trending_titles(const std::string& response)
@@ -257,6 +332,27 @@ static std::vector<std::string> extract_trending_details(const std::string& resp
     return details;
 }
 
+static std::vector<std::string> extract_trending_covers(const std::string& response)
+{
+    std::vector<std::string> covers;
+    size_t resultsPos = response.find("\"results\"");
+    if (resultsPos == std::string::npos) return covers;
+
+    size_t cursor = resultsPos;
+    while (covers.size() < 6)
+    {
+        size_t titlePos = response.find("\"title\"", cursor);
+        if (titlePos == std::string::npos) break;
+        size_t itemEnd = response.find("\"title\"", titlePos + 8);
+        if (itemEnd == std::string::npos) itemEnd = response.size();
+
+        std::string cover = json_nested_string_after(response, titlePos, "coverImage", "large", itemEnd);
+        covers.push_back(cover);
+        cursor = itemEnd;
+    }
+    return covers;
+}
+
 static void render_trending(brls::Box* homeBox, const std::string& response)
 {
     if (!homeBox || response.empty()) return;
@@ -264,6 +360,7 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
     log_stage("BEFORE TRENDING PARSE");
     std::vector<std::string> titles = extract_trending_titles(response);
     std::vector<std::string> details = extract_trending_details(response);
+    std::vector<std::string> covers = extract_trending_covers(response);
 
     char marker[64];
     std::snprintf(marker, sizeof(marker), "TRENDING PARSE FOUND %zu TITLES", titles.size());
@@ -280,21 +377,66 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
     heading->setFontSize(28);
     homeBox->addView(heading);
 
-    for (size_t i = 0; i < titles.size(); ++i)
-    {
-        brls::Label* title = new brls::Label();
-        title->setText(titles[i]);
-        title->setFontSize(22);
-        homeBox->addView(title);
+    // First real card only: prove the complete cover download + Image path before
+    // scaling the same component to all six results.
+    brls::Box* row = new brls::Box(brls::Axis::ROW);
+    row->setGrow(0.0f);
+    row->setAlignItems(brls::AlignItems::FLEX_START);
+    row->setMargins(8, 0, 8, 0);
+    homeBox->addView(row);
 
-        if (i < details.size() && !details[i].empty())
+    brls::Box* card = new brls::Box(brls::Axis::COLUMN);
+    card->setWidth(190);
+    card->setMargins(0, 12, 0, 0);
+
+    bool imageAttached = false;
+    if (!covers.empty() && !covers[0].empty())
+    {
+        const std::string imagePath = "sdmc:/switch/saikou_trending_0.jpg";
+        if (download_image(covers[0], imagePath))
         {
-            brls::Label* detail = new brls::Label();
-            detail->setText(details[i]);
-            detail->setFontSize(16);
-            homeBox->addView(detail);
+            brls::Image* image = new brls::Image();
+            image->setDimensions(180, 255);
+            image->setScalingType(brls::ImageScalingType::CROP);
+            image->setImageFromFile(imagePath);
+            card->addView(image);
+            imageAttached = true;
+            log_stage("FIRST TRENDING COVER ATTACHED");
         }
     }
+
+    if (!imageAttached)
+        log_stage("FIRST TRENDING COVER NOT ATTACHED");
+
+    brls::Label* title = new brls::Label();
+    title->setText(titles[0]);
+    title->setFontSize(20);
+    title->setMaxWidth(180);
+    title->setMargins(6, 0, 2, 0);
+    card->addView(title);
+
+    if (!details.empty() && !details[0].empty())
+    {
+        brls::Label* detail = new brls::Label();
+        detail->setText(details[0]);
+        detail->setFontSize(15);
+        detail->setMaxWidth(180);
+        card->addView(detail);
+    }
+
+    row->addView(card);
+
+    // Keep the remaining five results as text for this first image-card build.
+    // They will be converted to the same card component after image loading is
+    // proven stable on hardware.
+    for (size_t i = 1; i < titles.size(); ++i)
+    {
+        brls::Label* remaining = new brls::Label();
+        remaining->setText(titles[i]);
+        remaining->setFontSize(18);
+        homeBox->addView(remaining);
+    }
+
     log_stage("TRENDING UI ATTACHED");
 }
 
