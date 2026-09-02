@@ -1,4 +1,5 @@
 #include <borealis.hpp>
+#include <borealis/views/tab_frame.hpp>
 #include <switch.h>
 #include <cstdio>
 #include <cstdlib>
@@ -51,11 +52,29 @@ int main(int argc, char* argv[])
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
 
-    // Final build: keep the stable UI untouched and test the smallest possible
-    // runtime-safe attachment path using the already-created root TabFrame.
-    // We do not inspect View children because getChildren()/addView() are Box
-    // APIs, while the root is only known here as a View pointer.
-    log_stage("AFTER ROOT VALIDATION - NO EXTRA VIEW MUTATION");
+    // The TabFrame's creator/focus path is known to be unstable on this Switch
+    // port. Do not touch its private creator storage or synthesize focus.
+    // Instead, inflate the already-proven Home XML as an independent View and
+    // hand it to a public TabFrame API that performs the attachment internally.
+    brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
+    log_stage(tabFrame ? "TABFRAME PUBLIC API TARGET VALID" : "TABFRAME PUBLIC API TARGET NULL");
+
+    if (tabFrame)
+    {
+        log_stage("BEFORE DIRECT HOME RESOURCE INFLATION");
+        brls::View* homeContent = brls::View::createFromXMLResource("activity/home.xml");
+        log_stage(homeContent ? "DIRECT HOME RESOURCE RETURNED VIEW" : "DIRECT HOME RESOURCE RETURNED NULL");
+
+        if (homeContent)
+        {
+            log_stage("BEFORE PUBLIC TABFRAME CONTENT SET");
+            tabFrame->setTabContent(homeContent);
+            log_stage("AFTER PUBLIC TABFRAME CONTENT SET");
+            homeContent = nullptr;
+        }
+    }
+
+    log_stage("AFTER HOME CONTENT ATTACHMENT PATH");
 
     int loopCount = 0;
     while (brls::Application::mainLoop())
