@@ -91,7 +91,7 @@ jobs:
           set -eux
           test -d romfs
           rm -f saikou_switch.nro
-          "${DEVKITPRO}/tools/bin/elf2nro" saikou_switch.elf saikou_switch.nacp --nacp=saikou_switch.nacp --romfsdir="${PWD}/romfs"
+          "${DEVKITPRO}/tools/bin/elf2nro" saikou_switch.elf saikou_switch.nro --nacp=saikou_switch.nacp --romfsdir="${PWD}/romfs"
           test -s saikou_switch.nro
           ls -lh saikou_switch.nro
       - name: Upload NRO
