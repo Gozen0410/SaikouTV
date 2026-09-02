@@ -44,18 +44,49 @@ static std::string run_api_probe()
 {
     log_stage("BEFORE SOCKET INITIALIZE");
     Result socketRc = socketInitializeDefault();
-    if (R_FAILED(socketRc))
+    bool socketOwned = false;
+
+    if (R_SUCCEEDED(socketRc))
     {
-        log_stage("SOCKET INITIALIZE FAILED");
-        return "Network init failed";
+        socketOwned = true;
+        log_stage("SOCKET INITIALIZE OK");
     }
-    log_stage("SOCKET INITIALIZE OK");
+    else if (socketRc == MAKERESULT(Module_Libnx, LibnxError_AlreadyInitialized))
+    {
+        // Another component may already own the libnx socket device. Reuse it
+        // rather than treating an AlreadyInitialized result as a network failure.
+        log_stage("SOCKET ALREADY INITIALIZED - REUSING EXISTING SOCKET DEVICE");
+    }
+    else
+    {
+        char marker[128];
+        std::snprintf(marker, sizeof(marker), "SOCKET INITIALIZE FAILED RC 0x%08X LAST 0x%08X", static_cast<unsigned int>(socketRc), static_cast<unsigned int>(socketGetLastResult()));
+        log_stage(marker);
+
+        // The default configuration uses bsd:u. Official software can select
+        // bsd:s first, so try libnx's documented Auto mode before giving up.
+        SocketInitConfig config = *socketGetDefaultInitConfig();
+        config.bsd_service_type = BsdServiceType_Auto;
+        log_stage("BEFORE SOCKET AUTO INITIALIZE");
+        socketRc = socketInitialize(&config);
+        if (R_SUCCEEDED(socketRc))
+        {
+            socketOwned = true;
+            log_stage("SOCKET AUTO INITIALIZE OK");
+        }
+        else
+        {
+            std::snprintf(marker, sizeof(marker), "SOCKET AUTO INITIALIZE FAILED RC 0x%08X LAST 0x%08X", static_cast<unsigned int>(socketRc), static_cast<unsigned int>(socketGetLastResult()));
+            log_stage(marker);
+            return "Network init failed";
+        }
+    }
 
     CURLcode globalRc = curl_global_init(CURL_GLOBAL_DEFAULT);
     if (globalRc != CURLE_OK)
     {
         log_stage("CURL GLOBAL INIT FAILED");
-        socketExit();
+        if (socketOwned) socketExit();
         return "HTTP init failed";
     }
     log_stage("CURL GLOBAL INIT OK");
@@ -66,7 +97,7 @@ static std::string run_api_probe()
     {
         log_stage("CURL EASY INIT FAILED");
         curl_global_cleanup();
-        socketExit();
+        if (socketOwned) socketExit();
         return "HTTP client init failed";
     }
 
@@ -106,7 +137,7 @@ static std::string run_api_probe()
 
     curl_easy_cleanup(curl);
     curl_global_cleanup();
-    socketExit();
+    if (socketOwned) socketExit();
     log_stage("API PROBE CLEANUP COMPLETE");
     return result;
 }
