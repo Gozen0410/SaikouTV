@@ -2,5 +2,4 @@
     <brls:Label width="auto" height="auto" text="Saikou Switch" fontSize="42" horizontalAlign="center" />
     <brls:Label width="auto" height="auto" text="Your anime, rebuilt for Nintendo Switch" marginTop="12" horizontalAlign="center" />
     <brls:Label width="auto" height="auto" text="Trending" fontSize="30" marginTop="18" />
-    <brls:Label width="auto" height="auto" text="Live anime from AniList" marginTop="6" />
 </brls:Box>
