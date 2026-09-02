@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 static constexpr const char* kAppDir = "sdmc:/switch/SaikouTV";
 static constexpr const char* kCacheDir = "sdmc:/switch/SaikouTV/cache";
@@ -363,6 +364,13 @@ static std::vector<std::string> extract_trending_covers(const std::string& respo
     return covers;
 }
 
+static std::string compact_title(const std::string& title)
+{
+    constexpr size_t kMaxTitleChars = 29;
+    if (title.size() <= kMaxTitleChars) return title;
+    return title.substr(0, kMaxTitleChars - 3) + "...";
+}
+
 static void render_trending(brls::Box* homeBox, const std::string& response)
 {
     if (!homeBox || response.empty()) return;
@@ -385,20 +393,28 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
     brls::Label* heading = new brls::Label();
     heading->setText("Trending Now");
     heading->setFontSize(28);
+    heading->setMargins(0, 12, 0, 0);
     homeBox->addView(heading);
 
+    // Six cards are deliberately kept within the 1280px TV content area for now.
+    // This gives us reliable D-pad focus without depending on TabFrame internals
+    // or an unverified horizontal scrolling API.
     brls::Box* row = new brls::Box(brls::Axis::ROW);
     row->setGrow(0.0f);
     row->setAlignItems(brls::AlignItems::FLEX_START);
-    row->setMargins(8, 0, 8, 0);
+    row->setMargins(0, 6, 0, 0);
     homeBox->addView(row);
 
-    const size_t cardCount = titles.size() < 6 ? titles.size() : 6;
+    const size_t cardCount = std::min<size_t>(titles.size(), 6);
     for (size_t i = 0; i < cardCount; ++i)
     {
         brls::Box* card = new brls::Box(brls::Axis::COLUMN);
-        card->setWidth(145);
-        card->setMargins(4, 8, 4, 0);
+        card->setWidth(125);
+        card->setMargins(3, 4, 3, 0);
+        card->setFocusable(true);
+        card->setHighlightPadding(5.0f);
+        card->setCornerRadius(5.0f);
+        card->setFocusSound(brls::SOUND_FOCUS_CHANGE);
 
         bool imageAttached = false;
         if (i < covers.size() && !covers[i].empty())
@@ -410,9 +426,10 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
             if (download_image(covers[i], imagePath))
             {
                 brls::Image* image = new brls::Image();
-                image->setDimensions(135, 190);
+                image->setDimensions(115, 162);
                 image->setScalingType(brls::ImageScalingType::CROP);
                 image->setImageFromFile(imagePath);
+                image->setFocusable(false);
                 card->addView(image);
                 imageAttached = true;
                 log_stage("TRENDING CARD IMAGE ATTACHED");
@@ -428,20 +445,29 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
         }
 
         brls::Label* title = new brls::Label();
-        title->setText(titles[i]);
-        title->setFontSize(17);
-        title->setMaxWidth(135);
-        title->setMargins(2, 3, 2, 0);
+        title->setText(compact_title(titles[i]));
+        title->setFontSize(16);
+        title->setMaxWidth(115);
+        title->setMargins(2, 4, 2, 0);
+        title->setFocusable(false);
         card->addView(title);
 
         if (i < details.size() && !details[i].empty())
         {
             brls::Label* detail = new brls::Label();
             detail->setText(details[i]);
-            detail->setFontSize(13);
-            detail->setMaxWidth(135);
+            detail->setFontSize(12);
+            detail->setMaxWidth(115);
+            detail->setFocusable(false);
             card->addView(detail);
         }
+
+        card->registerAction("Open anime", brls::BUTTON_A, [i](brls::View*) {
+            char marker[64];
+            std::snprintf(marker, sizeof(marker), "TRENDING CARD SELECTED %zu", i);
+            log_stage(marker);
+            return true;
+        });
 
         row->addView(card);
     }
