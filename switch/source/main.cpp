@@ -15,7 +15,7 @@ static void log_stage(const char* stage)
     std::fflush(g_log);
 }
 
-static size_t curl_write_callback(char* ptr, size_t size, size_t nmemb, void* userdata)
+static size_t api_write_callback(char* ptr, size_t size, size_t nmemb, void* userdata)
 {
     std::string* output = static_cast<std::string*>(userdata);
     const size_t bytes = size * nmemb;
@@ -81,7 +81,7 @@ static std::string run_api_probe()
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "SaikouSwitch/0.2");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, api_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 
     CURLcode requestRc = curl_easy_perform(curl);
