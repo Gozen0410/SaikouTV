@@ -3,6 +3,7 @@
 #include <switch.h>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 static FILE* g_log = nullptr;
 static void log_stage(const char* stage)
@@ -52,25 +53,60 @@ int main(int argc, char* argv[])
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
 
-    // The TabFrame's creator/focus path is known to be unstable on this Switch
-    // port. Do not touch its private creator storage or synthesize focus.
-    // Instead, inflate the already-proven Home XML as an independent View and
-    // hand it to a public TabFrame API that performs the attachment internally.
+    // Do not touch TabFrame's private creator/focus machinery. The public
+    // content API is retained, but first prove the actual Home resource exists
+    // and bypass Borealis' resource-name wrapper so the path is unambiguous.
     brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
     log_stage(tabFrame ? "TABFRAME PUBLIC API TARGET VALID" : "TABFRAME PUBLIC API TARGET NULL");
 
     if (tabFrame)
     {
-        log_stage("BEFORE DIRECT HOME RESOURCE INFLATION");
-        brls::View* homeContent = brls::View::createFromXMLResource("activity/home.xml");
-        log_stage(homeContent ? "DIRECT HOME RESOURCE RETURNED VIEW" : "DIRECT HOME RESOURCE RETURNED NULL");
+        const char* homePath = "romfs:/xml/activity/home.xml";
+        log_stage("BEFORE HOME RESOURCE PREFLIGHT");
 
-        if (homeContent)
+        FILE* homeFile = std::fopen(homePath, "rb");
+        if (!homeFile)
         {
-            log_stage("BEFORE PUBLIC TABFRAME CONTENT SET");
-            tabFrame->setTabContent(homeContent);
-            log_stage("AFTER PUBLIC TABFRAME CONTENT SET");
-            homeContent = nullptr;
+            log_stage("HOME RESOURCE PREFLIGHT OPEN FAILED");
+        }
+        else
+        {
+            log_stage("HOME RESOURCE PREFLIGHT OPEN OK");
+            std::fseek(homeFile, 0, SEEK_END);
+            long fileSize = std::ftell(homeFile);
+            std::fseek(homeFile, 0, SEEK_SET);
+
+            if (fileSize <= 0 || fileSize > 1024 * 1024)
+            {
+                std::fclose(homeFile);
+                log_stage("HOME RESOURCE PREFLIGHT INVALID SIZE");
+            }
+            else
+            {
+                std::string xml(static_cast<size_t>(fileSize), '\0');
+                size_t readSize = std::fread(xml.data(), 1, xml.size(), homeFile);
+                std::fclose(homeFile);
+
+                if (readSize != xml.size())
+                {
+                    log_stage("HOME RESOURCE PREFLIGHT READ FAILED");
+                }
+                else
+                {
+                    log_stage("HOME RESOURCE PREFLIGHT READ OK");
+                    log_stage("BEFORE HOME XML STRING INFLATION");
+                    brls::View* homeContent = brls::View::createFromXMLString(xml);
+                    log_stage(homeContent ? "HOME XML STRING RETURNED VIEW" : "HOME XML STRING RETURNED NULL");
+
+                    if (homeContent)
+                    {
+                        log_stage("BEFORE PUBLIC TABFRAME CONTENT SET");
+                        tabFrame->setTabContent(homeContent);
+                        log_stage("AFTER PUBLIC TABFRAME CONTENT SET");
+                        homeContent = nullptr;
+                    }
+                }
+            }
         }
     }
 
