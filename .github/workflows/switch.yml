@@ -14,6 +14,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Switch networking dependency
+        run: |
+          set -eux
+          dkp-pacman -S --needed --noconfirm switch-curl
+          test -f "${DEVKITPRO}/portlibs/switch/lib/libcurl.a"
+          test -f "${DEVKITPRO}/portlibs/switch/include/curl/curl.h"
       - name: Fetch Borealis
         run: |
           set -eux
@@ -85,7 +91,7 @@ jobs:
           set -eux
           test -d romfs
           rm -f saikou_switch.nro
-          "${DEVKITPRO}/tools/bin/elf2nro" saikou_switch.elf saikou_switch.nro --nacp=saikou_switch.nacp --romfsdir="${PWD}/romfs"
+          "${DEVKITPRO}/tools/bin/elf2nro" saikou_switch.elf saikou_switch.nacp --nacp=saikou_switch.nacp --romfsdir="${PWD}/romfs"
           test -s saikou_switch.nro
           ls -lh saikou_switch.nro
       - name: Upload NRO
