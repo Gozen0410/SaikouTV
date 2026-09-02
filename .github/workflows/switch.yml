@@ -79,7 +79,11 @@ jobs:
       - name: Apply Saikou trending carousel and controller navigation
         run: |
           set -eux
+          sed -i 's/brls::Key::DLEFT/brls::BUTTON_LEFT/g; s/brls::Key::DRIGHT/brls::BUTTON_RIGHT/g; s/brls::Key::A/brls::BUTTON_A/g' switch/tools/apply_trending_carousel.py
+          python3 -m py_compile switch/tools/apply_trending_carousel.py
           python3 switch/tools/apply_trending_carousel.py
+          grep -q 'class TrendingCarouselViewport' switch/source/main.cpp
+          grep -q 'BUTTON_RIGHT' switch/source/main.cpp
           git diff --check
       - name: Build ELF
         working-directory: switch
