@@ -84,6 +84,15 @@ jobs:
           test -f switch/source/main.cpp
           grep -q 'class TrendingCarouselViewport' switch/source/main.cpp
           grep -q 'BUTTON_RIGHT' switch/source/main.cpp
+      - name: Apply controller controls
+        run: |
+          set -eux
+          python3 -m py_compile switch/tools/apply_controller_controls.py
+          python3 switch/tools/apply_controller_controls.py
+          grep -q 'g_refreshRequested' switch/source/main.cpp
+          grep -q 'BUTTON_X' switch/source/main.cpp
+          grep -q 'BUTTON_Y' switch/source/main.cpp
+          grep -q 'setGlobalQuit(true)' switch/source/main.cpp
       - name: Build ELF
         working-directory: switch
         run: |
