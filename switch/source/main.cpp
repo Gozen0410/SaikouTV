@@ -3,15 +3,28 @@
 #include <borealis/views/image.hpp>
 #include <switch.h>
 #include <curl/curl.h>
+#include <sys/stat.h>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
+static constexpr const char* kAppDir = "sdmc:/switch/SaikouTV";
+static constexpr const char* kCacheDir = "sdmc:/switch/SaikouTV/cache";
+static constexpr const char* kLogPath = "sdmc:/switch/SaikouTV/saikou_debug.log";
+
 static FILE* g_log = nullptr;
+
+static void ensure_app_dirs()
+{
+    mkdir("sdmc:/switch", 0777);
+    mkdir(kAppDir, 0777);
+    mkdir(kCacheDir, 0777);
+}
+
 static void log_stage(const char* stage)
 {
-    if (!g_log) g_log = std::fopen("sdmc:/switch/saikou_debug.log", "a");
+    if (!g_log) g_log = std::fopen(kLogPath, "a");
     if (!g_log) return;
     std::fprintf(g_log, "[Saikou] %s\n", stage);
     std::fflush(g_log);
@@ -280,7 +293,6 @@ static std::vector<std::string> extract_trending_titles(const std::string& respo
     {
         size_t titlePos = response.find("\"title\"", cursor);
         if (titlePos == std::string::npos) break;
-
         size_t objectStart = response.find('{', titlePos);
         if (objectStart == std::string::npos) break;
         size_t objectEnd = response.find('}', objectStart + 1);
@@ -289,7 +301,6 @@ static std::vector<std::string> extract_trending_titles(const std::string& respo
         std::string title = json_string_after(response, objectStart, "english", objectEnd);
         if (title.empty()) title = json_string_after(response, objectStart, "romaji", objectEnd);
         if (title.empty()) title = json_string_after(response, objectStart, "native", objectEnd);
-
         if (!title.empty()) titles.push_back(title);
         cursor = objectEnd + 1;
     }
@@ -345,7 +356,6 @@ static std::vector<std::string> extract_trending_covers(const std::string& respo
         if (titlePos == std::string::npos) break;
         size_t itemEnd = response.find("\"title\"", titlePos + 8);
         if (itemEnd == std::string::npos) itemEnd = response.size();
-
         std::string cover = json_nested_string_after(response, titlePos, "coverImage", "large", itemEnd);
         covers.push_back(cover);
         cursor = itemEnd;
@@ -377,8 +387,6 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
     heading->setFontSize(28);
     homeBox->addView(heading);
 
-    // First real card only: prove the complete cover download + Image path before
-    // scaling the same component to all six results.
     brls::Box* row = new brls::Box(brls::Axis::ROW);
     row->setGrow(0.0f);
     row->setAlignItems(brls::AlignItems::FLEX_START);
@@ -392,7 +400,7 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
     bool imageAttached = false;
     if (!covers.empty() && !covers[0].empty())
     {
-        const std::string imagePath = "sdmc:/switch/saikou_trending_0.jpg";
+        const std::string imagePath = std::string(kCacheDir) + "/trending_0.jpg";
         if (download_image(covers[0], imagePath))
         {
             brls::Image* image = new brls::Image();
@@ -405,8 +413,7 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
         }
     }
 
-    if (!imageAttached)
-        log_stage("FIRST TRENDING COVER NOT ATTACHED");
+    if (!imageAttached) log_stage("FIRST TRENDING COVER NOT ATTACHED");
 
     brls::Label* title = new brls::Label();
     title->setText(titles[0]);
@@ -426,9 +433,6 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
 
     row->addView(card);
 
-    // Keep the remaining five results as text for this first image-card build.
-    // They will be converted to the same card component after image loading is
-    // proven stable on hardware.
     for (size_t i = 1; i < titles.size(); ++i)
     {
         brls::Label* remaining = new brls::Label();
@@ -442,12 +446,16 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
 
 int main(int argc, char* argv[])
 {
-    (void)argc; (void)argv;
+    (void)argc;
+    (void)argv;
+
     fsdevMountSdmc();
-    g_log = std::fopen("sdmc:/switch/saikou_debug.log", "w");
+    ensure_app_dirs();
+    g_log = std::fopen(kLogPath, "w");
     log_stage("entered main");
     brls::Logger::setLogLevel(brls::LogLevel::DEBUG);
     log_stage("logger configured");
+
     Result romfsRc = romfsInit();
     log_stage(R_SUCCEEDED(romfsRc) ? "romfsInit OK" : "romfsInit FAILED");
     log_stage("closing Saikou log before Borealis init");
@@ -468,7 +476,6 @@ int main(int argc, char* argv[])
 
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
-
     brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
     log_stage(tabFrame ? "TABFRAME PUBLIC API TARGET VALID" : "TABFRAME PUBLIC API TARGET NULL");
 
@@ -476,7 +483,6 @@ int main(int argc, char* argv[])
     {
         const char* homePath = "romfs:/xml/activity/home.xml";
         log_stage("BEFORE HOME RESOURCE PREFLIGHT");
-
         FILE* homeFile = std::fopen(homePath, "rb");
         if (!homeFile)
         {
@@ -488,7 +494,6 @@ int main(int argc, char* argv[])
             std::fseek(homeFile, 0, SEEK_END);
             long fileSize = std::ftell(homeFile);
             std::fseek(homeFile, 0, SEEK_SET);
-
             if (fileSize <= 0 || fileSize > 1024 * 1024)
             {
                 std::fclose(homeFile);
@@ -499,7 +504,6 @@ int main(int argc, char* argv[])
                 std::string xml(static_cast<size_t>(fileSize), '\0');
                 size_t readSize = std::fread(xml.data(), 1, xml.size(), homeFile);
                 std::fclose(homeFile);
-
                 if (readSize != xml.size())
                 {
                     log_stage("HOME RESOURCE PREFLIGHT READ FAILED");
@@ -510,7 +514,6 @@ int main(int argc, char* argv[])
                     log_stage("BEFORE HOME XML STRING INFLATION");
                     brls::View* homeContent = brls::View::createFromXMLString(xml);
                     log_stage(homeContent ? "HOME XML STRING RETURNED VIEW" : "HOME XML STRING RETURNED NULL");
-
                     if (homeContent)
                     {
                         log_stage("BEFORE API PROBE");
@@ -525,9 +528,7 @@ int main(int argc, char* argv[])
                             status->setFontSize(16);
                             homeBox->addView(status);
                             log_stage("API STATUS LABEL ATTACHED");
-
-                            if (!api.response.empty())
-                                render_trending(homeBox, api.response);
+                            if (!api.response.empty()) render_trending(homeBox, api.response);
                         }
                         else
                         {
@@ -545,7 +546,6 @@ int main(int argc, char* argv[])
     }
 
     log_stage("AFTER HOME CONTENT ATTACHMENT PATH");
-
     int loopCount = 0;
     while (brls::Application::mainLoop())
     {
