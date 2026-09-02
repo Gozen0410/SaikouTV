@@ -76,6 +76,11 @@ jobs:
               p.write_text(s)
           PY
           git diff --check
+      - name: Apply Saikou trending carousel and controller navigation
+        run: |
+          set -eux
+          python3 switch/tools/apply_trending_carousel.py
+          git diff --check
       - name: Build ELF
         working-directory: switch
         run: |
