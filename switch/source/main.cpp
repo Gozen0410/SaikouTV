@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 static FILE* g_log = nullptr;
 static void log_stage(const char* stage)
@@ -19,8 +20,6 @@ static size_t api_write_callback(char* ptr, size_t size, size_t nmemb, void* use
 {
     std::string* output = static_cast<std::string*>(userdata);
     const size_t bytes = size * nmemb;
-    // This is deliberately a tiny proof-of-life request, not a general downloader.
-    // Keep the response bounded so a bad server cannot consume the UI process heap.
     constexpr size_t kMaxResponse = 512 * 1024;
     if (output->size() < kMaxResponse)
     {
@@ -40,8 +39,16 @@ public:
     }
 };
 
-static std::string run_api_probe()
+struct ApiResult
 {
+    std::string status;
+    std::string response;
+};
+
+static ApiResult run_api_probe()
+{
+    ApiResult result;
+
     log_stage("BEFORE SOCKET INITIALIZE");
     Result socketRc = socketInitializeDefault();
     bool socketOwned = false;
@@ -53,8 +60,6 @@ static std::string run_api_probe()
     }
     else if (socketRc == MAKERESULT(Module_Libnx, LibnxError_AlreadyInitialized))
     {
-        // Another component may already own the libnx socket device. Reuse it
-        // rather than treating an AlreadyInitialized result as a network failure.
         log_stage("SOCKET ALREADY INITIALIZED - REUSING EXISTING SOCKET DEVICE");
     }
     else
@@ -63,8 +68,6 @@ static std::string run_api_probe()
         std::snprintf(marker, sizeof(marker), "SOCKET INITIALIZE FAILED RC 0x%08X LAST 0x%08X", static_cast<unsigned int>(socketRc), static_cast<unsigned int>(socketGetLastResult()));
         log_stage(marker);
 
-        // The default configuration uses bsd:u. Official software can select
-        // bsd:s first, so try libnx's documented Auto mode before giving up.
         SocketInitConfig config = *socketGetDefaultInitConfig();
         config.bsd_service_type = BsdServiceType_Auto;
         log_stage("BEFORE SOCKET AUTO INITIALIZE");
@@ -78,7 +81,8 @@ static std::string run_api_probe()
         {
             std::snprintf(marker, sizeof(marker), "SOCKET AUTO INITIALIZE FAILED RC 0x%08X LAST 0x%08X", static_cast<unsigned int>(socketRc), static_cast<unsigned int>(socketGetLastResult()));
             log_stage(marker);
-            return "Network init failed";
+            result.status = "Network init failed";
+            return result;
         }
     }
 
@@ -87,23 +91,23 @@ static std::string run_api_probe()
     {
         log_stage("CURL GLOBAL INIT FAILED");
         if (socketOwned) socketExit();
-        return "HTTP init failed";
+        result.status = "HTTP init failed";
+        return result;
     }
     log_stage("CURL GLOBAL INIT OK");
 
-    std::string response;
     CURL* curl = curl_easy_init();
     if (!curl)
     {
         log_stage("CURL EASY INIT FAILED");
         curl_global_cleanup();
         if (socketOwned) socketExit();
-        return "HTTP client init failed";
+        result.status = "HTTP client init failed";
+        return result;
     }
 
-    // Public Miruro API v3 deployment used only as a networking proof target.
-    // The app's own fork can replace this base URL once it is deployed.
-    const char* url = "https://miruro.zenos.my.id/trending?per_page=1";
+    std::string response;
+    const char* url = "https://miruro.zenos.my.id/trending?per_page=6";
     log_stage("BEFORE API REQUEST");
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
@@ -119,20 +123,20 @@ static std::string run_api_probe()
     long httpCode = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
 
-    std::string result;
     if (requestRc == CURLE_OK && httpCode >= 200 && httpCode < 300 && response.find("results") != std::string::npos)
     {
         char marker[96];
         std::snprintf(marker, sizeof(marker), "API REQUEST OK HTTP %ld BYTES %zu", httpCode, response.size());
         log_stage(marker);
-        result = "API online - trending data received";
+        result.status = "API online - trending data received";
+        result.response = response;
     }
     else
     {
         char marker[128];
         std::snprintf(marker, sizeof(marker), "API REQUEST FAILED CURL %d HTTP %ld BYTES %zu", static_cast<int>(requestRc), httpCode, response.size());
         log_stage(marker);
-        result = "API request failed - UI still running";
+        result.status = "API request failed - UI still running";
     }
 
     curl_easy_cleanup(curl);
@@ -140,6 +144,158 @@ static std::string run_api_probe()
     if (socketOwned) socketExit();
     log_stage("API PROBE CLEANUP COMPLETE");
     return result;
+}
+
+// Small, dependency-free JSON string extractor for the fields we need from
+// Miruro's stable trending response. This intentionally avoids adding another
+// parser/library to the working Switch build until the UI path is established.
+static std::string json_string_after(const std::string& text, size_t from, const char* key, size_t limit)
+{
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t keyPos = text.find(needle, from);
+    if (keyPos == std::string::npos || keyPos >= limit) return std::string();
+
+    size_t colon = text.find(':', keyPos + needle.size());
+    if (colon == std::string::npos || colon >= limit) return std::string();
+    size_t quote = text.find('"', colon + 1);
+    if (quote == std::string::npos || quote >= limit) return std::string();
+
+    std::string value;
+    for (size_t i = quote + 1; i < limit; ++i)
+    {
+        if (text[i] == '\\' && i + 1 < limit)
+        {
+            const char escaped = text[i + 1];
+            if (escaped == '"' || escaped == '\\' || escaped == '/') value.push_back(escaped);
+            else if (escaped == 'n') value.push_back(' ');
+            else if (escaped == 't') value.push_back(' ');
+            else value.push_back(escaped);
+            ++i;
+            continue;
+        }
+        if (text[i] == '"') break;
+        value.push_back(text[i]);
+    }
+    return value;
+}
+
+static std::string json_value_after(const std::string& text, size_t from, const char* key, size_t limit)
+{
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t keyPos = text.find(needle, from);
+    if (keyPos == std::string::npos || keyPos >= limit) return std::string();
+    size_t colon = text.find(':', keyPos + needle.size());
+    if (colon == std::string::npos || colon >= limit) return std::string();
+
+    size_t start = colon + 1;
+    while (start < limit && (text[start] == ' ' || text[start] == '\n' || text[start] == '\r' || text[start] == '\t')) ++start;
+    size_t end = start;
+    while (end < limit && text[end] != ',' && text[end] != '}' && text[end] != '\n') ++end;
+    return text.substr(start, end - start);
+}
+
+static std::vector<std::string> extract_trending_titles(const std::string& response)
+{
+    std::vector<std::string> titles;
+    size_t resultsPos = response.find("\"results\"");
+    if (resultsPos == std::string::npos) return titles;
+
+    size_t cursor = resultsPos;
+    while (titles.size() < 6)
+    {
+        size_t titlePos = response.find("\"title\"", cursor);
+        if (titlePos == std::string::npos) break;
+
+        size_t objectStart = response.find('{', titlePos);
+        if (objectStart == std::string::npos) break;
+        size_t objectEnd = response.find('}', objectStart + 1);
+        if (objectEnd == std::string::npos) break;
+
+        std::string title = json_string_after(response, objectStart, "english", objectEnd);
+        if (title.empty()) title = json_string_after(response, objectStart, "romaji", objectEnd);
+        if (title.empty()) title = json_string_after(response, objectStart, "native", objectEnd);
+
+        if (!title.empty()) titles.push_back(title);
+        cursor = objectEnd + 1;
+    }
+    return titles;
+}
+
+static std::vector<std::string> extract_trending_details(const std::string& response)
+{
+    std::vector<std::string> details;
+    size_t resultsPos = response.find("\"results\"");
+    if (resultsPos == std::string::npos) return details;
+
+    size_t cursor = resultsPos;
+    while (details.size() < 6)
+    {
+        size_t titlePos = response.find("\"title\"", cursor);
+        if (titlePos == std::string::npos) break;
+        size_t objectStart = response.find('{', titlePos);
+        if (objectStart == std::string::npos) break;
+        size_t objectEnd = response.find('}', objectStart + 1);
+        if (objectEnd == std::string::npos) break;
+
+        size_t itemEnd = response.find("\"title\"", objectEnd + 1);
+        if (itemEnd == std::string::npos) itemEnd = response.size();
+
+        std::string format = json_string_after(response, objectEnd, "format", itemEnd);
+        if (format.empty()) format = json_string_after(response, objectEnd, "type", itemEnd);
+        std::string score = json_value_after(response, objectEnd, "averageScore", itemEnd);
+
+        std::string detail;
+        if (!format.empty()) detail += format;
+        if (!score.empty() && score != "null")
+        {
+            if (!detail.empty()) detail += "  •  ";
+            detail += "Score: " + score;
+        }
+        details.push_back(detail);
+        cursor = objectEnd + 1;
+    }
+    return details;
+}
+
+static void render_trending(brls::Box* homeBox, const std::string& response)
+{
+    if (!homeBox || response.empty()) return;
+
+    log_stage("BEFORE TRENDING PARSE");
+    std::vector<std::string> titles = extract_trending_titles(response);
+    std::vector<std::string> details = extract_trending_details(response);
+
+    char marker[64];
+    std::snprintf(marker, sizeof(marker), "TRENDING PARSE FOUND %zu TITLES", titles.size());
+    log_stage(marker);
+
+    if (titles.empty())
+    {
+        log_stage("TRENDING PARSE FOUND NO TITLES");
+        return;
+    }
+
+    brls::Label* heading = new brls::Label();
+    heading->setText("Trending Now");
+    heading->setFontSize(28);
+    homeBox->addView(heading);
+
+    for (size_t i = 0; i < titles.size(); ++i)
+    {
+        brls::Label* title = new brls::Label();
+        title->setText(titles[i]);
+        title->setFontSize(22);
+        homeBox->addView(title);
+
+        if (i < details.size() && !details[i].empty())
+        {
+            brls::Label* detail = new brls::Label();
+            detail->setText(details[i]);
+            detail->setFontSize(16);
+            homeBox->addView(detail);
+        }
+    }
+    log_stage("TRENDING UI ATTACHED");
 }
 
 int main(int argc, char* argv[])
@@ -171,9 +327,6 @@ int main(int argc, char* argv[])
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
 
-    // Do not touch TabFrame's private creator/focus machinery. The public
-    // content API is retained, but first prove the actual Home resource exists
-    // and bypass Borealis' resource-name wrapper so the path is unambiguous.
     brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
     log_stage(tabFrame ? "TABFRAME PUBLIC API TARGET VALID" : "TABFRAME PUBLIC API TARGET NULL");
 
@@ -219,16 +372,20 @@ int main(int argc, char* argv[])
                     if (homeContent)
                     {
                         log_stage("BEFORE API PROBE");
-                        std::string apiStatus = run_api_probe();
+                        ApiResult api = run_api_probe();
                         log_stage("AFTER API PROBE");
 
                         brls::Box* homeBox = dynamic_cast<brls::Box*>(homeContent);
                         if (homeBox)
                         {
                             brls::Label* status = new brls::Label();
-                            status->setText(apiStatus);
+                            status->setText(api.status);
+                            status->setFontSize(16);
                             homeBox->addView(status);
                             log_stage("API STATUS LABEL ATTACHED");
+
+                            if (!api.response.empty())
+                                render_trending(homeBox, api.response);
                         }
                         else
                         {
