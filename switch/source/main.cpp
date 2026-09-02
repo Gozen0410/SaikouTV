@@ -1,6 +1,7 @@
 #include <borealis.hpp>
 #include <borealis/views/tab_frame.hpp>
 #include <switch.h>
+#include <curl/curl.h>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -14,6 +15,21 @@ static void log_stage(const char* stage)
     std::fflush(g_log);
 }
 
+static size_t curl_write_callback(char* ptr, size_t size, size_t nmemb, void* userdata)
+{
+    std::string* output = static_cast<std::string*>(userdata);
+    const size_t bytes = size * nmemb;
+    // This is deliberately a tiny proof-of-life request, not a general downloader.
+    // Keep the response bounded so a bad server cannot consume the UI process heap.
+    constexpr size_t kMaxResponse = 512 * 1024;
+    if (output->size() < kMaxResponse)
+    {
+        const size_t remaining = kMaxResponse - output->size();
+        output->append(ptr, bytes < remaining ? bytes : remaining);
+    }
+    return bytes;
+}
+
 class HomeActivity : public brls::Activity
 {
 public:
@@ -23,6 +39,77 @@ public:
         return brls::View::createFromXMLResource("activity/main.xml");
     }
 };
+
+static std::string run_api_probe()
+{
+    log_stage("BEFORE SOCKET INITIALIZE");
+    Result socketRc = socketInitializeDefault();
+    if (R_FAILED(socketRc))
+    {
+        log_stage("SOCKET INITIALIZE FAILED");
+        return "Network init failed";
+    }
+    log_stage("SOCKET INITIALIZE OK");
+
+    CURLcode globalRc = curl_global_init(CURL_GLOBAL_DEFAULT);
+    if (globalRc != CURLE_OK)
+    {
+        log_stage("CURL GLOBAL INIT FAILED");
+        socketExit();
+        return "HTTP init failed";
+    }
+    log_stage("CURL GLOBAL INIT OK");
+
+    std::string response;
+    CURL* curl = curl_easy_init();
+    if (!curl)
+    {
+        log_stage("CURL EASY INIT FAILED");
+        curl_global_cleanup();
+        socketExit();
+        return "HTTP client init failed";
+    }
+
+    // Public Miruro API v3 deployment used only as a networking proof target.
+    // The app's own fork can replace this base URL once it is deployed.
+    const char* url = "https://miruro.zenos.my.id/trending?per_page=1";
+    log_stage("BEFORE API REQUEST");
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SaikouSwitch/0.2");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+    CURLcode requestRc = curl_easy_perform(curl);
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+
+    std::string result;
+    if (requestRc == CURLE_OK && httpCode >= 200 && httpCode < 300 && response.find("results") != std::string::npos)
+    {
+        char marker[96];
+        std::snprintf(marker, sizeof(marker), "API REQUEST OK HTTP %ld BYTES %zu", httpCode, response.size());
+        log_stage(marker);
+        result = "API online - trending data received";
+    }
+    else
+    {
+        char marker[128];
+        std::snprintf(marker, sizeof(marker), "API REQUEST FAILED CURL %d HTTP %ld BYTES %zu", static_cast<int>(requestRc), httpCode, response.size());
+        log_stage(marker);
+        result = "API request failed - UI still running";
+    }
+
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+    socketExit();
+    log_stage("API PROBE CLEANUP COMPLETE");
+    return result;
+}
 
 int main(int argc, char* argv[])
 {
@@ -100,6 +187,23 @@ int main(int argc, char* argv[])
 
                     if (homeContent)
                     {
+                        log_stage("BEFORE API PROBE");
+                        std::string apiStatus = run_api_probe();
+                        log_stage("AFTER API PROBE");
+
+                        brls::Box* homeBox = dynamic_cast<brls::Box*>(homeContent);
+                        if (homeBox)
+                        {
+                            brls::Label* status = new brls::Label();
+                            status->setText(apiStatus);
+                            homeBox->addView(status);
+                            log_stage("API STATUS LABEL ATTACHED");
+                        }
+                        else
+                        {
+                            log_stage("HOME ROOT IS NOT BOX");
+                        }
+
                         log_stage("BEFORE PUBLIC TABFRAME CONTENT SET");
                         tabFrame->setTabContent(homeContent);
                         log_stage("AFTER PUBLIC TABFRAME CONTENT SET");
