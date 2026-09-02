@@ -1,24 +1,6 @@
-<brls:Box width="auto" height="auto" axis="column" paddingTop="35" paddingBottom="35" paddingLeft="50" paddingRight="50">
+<brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingBottom="40" paddingLeft="50" paddingRight="50">
     <brls:Label width="auto" height="auto" text="Saikou Switch" fontSize="42" horizontalAlign="center" />
-    <brls:Label width="auto" height="auto" text="Your anime, rebuilt for Nintendo Switch" marginTop="12" horizontalAlign="center" />
-
-    <brls:Separator marginTop="28" marginBottom="28" />
-
-    <brls:Label width="auto" height="auto" text="Trending Anime" fontSize="30" />
-    <brls:Label width="auto" height="auto" text="Discover what is popular right now." marginTop="10" />
-
-    <brls:Box width="auto" height="auto" axis="column" marginTop="22" paddingTop="18" paddingBottom="18" paddingLeft="24" paddingRight="24">
-        <brls:Label width="auto" height="auto" text="01   Trending list" fontSize="24" />
-        <brls:Label width="auto" height="auto" text="AniList-powered titles will appear here." marginTop="8" />
-    </brls:Box>
-
-    <brls:Box width="auto" height="auto" axis="column" marginTop="12" paddingTop="18" paddingBottom="18" paddingLeft="24" paddingRight="24">
-        <brls:Label width="auto" height="auto" text="02   Continue Watching" fontSize="24" />
-        <brls:Label width="auto" height="auto" text="Your recently watched anime will appear here." marginTop="8" />
-    </brls:Box>
-
-    <brls:Separator marginTop="28" marginBottom="22" />
-
-    <brls:Label width="auto" height="auto" text="Coming Next" fontSize="30" />
-    <brls:Label width="auto" height="auto" text="Search, library, and AniList integration are next." marginTop="10" />
+    <brls:Label width="auto" height="auto" text="Your anime, rebuilt for Nintendo Switch" marginTop="20" horizontalAlign="center" />
+    <brls:Label width="auto" height="auto" text="Trending" fontSize="30" />
+    <brls:Label width="auto" height="auto" text="AniList integration coming next" marginTop="20" />
 </brls:Box>
