@@ -21,17 +21,6 @@ static brls::View* g_boundSettingsTab = nullptr;
         raise SystemExit("Could not locate Home persistence globals")
     source = source.replace(marker, addition, 1)
 
-# The Settings tab is XML-created, so expose only the active tab pointer from
-# the already-patched TabFrame. No content is replaced through this accessor.
-header = borealis_header.read_text()
-if "View* getActiveTab() const" not in header:
-    marker = '    void addSeparator();\n'
-    addition = marker + '    View* getActiveTab() const { return this->activeTab; }\n'
-    if header.count(marker) != 1:
-        raise SystemExit("Could not locate TabFrame addSeparator declaration")
-    header = header.replace(marker, addition, 1)
-    borealis_header.write_text(header)
-
 # Persistent provider selection helpers.
 if "static const char* api_source_name" not in source:
     marker = 'static brls::View* load_home_content_from_xml()\n'
@@ -90,16 +79,10 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     if (!current || !miruro || !animepahe || !gogoanime)
         return;
 
-    // The sidebar's active item is tracked by the controller-controls patch.
-    // Route the selector controls directly back to that item so LEFT returns
-    // to Settings instead of falling through TabFrame's default Home route.
-    if (g_activeSidebarItem)
-    {
-        settingsTab->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
-        miruro->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
-        animepahe->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
-        gogoanime->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
-    }
+    // Do not install custom LEFT routes here. The pinned TabFrame owns the
+    // sidebar/content focus transition, and changing routes on the Settings
+    // content tree can invalidate focus while the tab is being activated.
+    // Keep Settings navigation on Borealis' normal focus graph for now.
 
     miruro->registerClickAction([current](brls::View*) {
         g_apiSource = 0;
@@ -117,6 +100,7 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
 
     gogoanime->registerClickAction([current](brls::View*) {
         g_apiSource = 2;
+        current->setText("Anime API: Gogoanime");
         current->setText("Anime API: Gogoanime");
         save_api_source();
         return true;
@@ -156,24 +140,6 @@ elif 'id="api-source-miruro"' not in xml or 'id="api-source-gogoanime"' not in x
     raise SystemExit("Could not locate Settings XML block")
 xml_path.write_text(xml)
 
-# Remove obsolete Settings activation/content replacement logic if an older
-# selector patch left it behind. Settings remains XML-owned.
-old_block = '''                        if (!sidebarContent->getChildren().empty())
-                        {
-                            brls::View* candidate = sidebarContent->getChildren().back();
-                            brls::SidebarItem* settingsItem = dynamic_cast<brls::SidebarItem*>(candidate);
-                            if (settingsItem)
-                            {
-                                settingsItem->getActiveEvent()->subscribe([](brls::View*) {
-                                    g_settingsRefreshRequested = true;
-                                });
-                                log_stage("SETTINGS ACTIVE ITEM TRACKING INSTALLED");
-                            }
-                        }
-'''
-if old_block in source:
-    source = source.replace(old_block, '', 1)
-
 # Bind the Settings controls after the XML-created active tab exists. No
 # Settings content replacement occurs here.
 if "bind_api_settings_actions(tabFrame);" not in source:
@@ -192,4 +158,4 @@ if 'load_api_source();' not in source:
 
 path = source_path
 path.write_text(source)
-print("API selector spacing and Settings LEFT navigation fixed")
+print("Removed unsafe Settings custom focus routing; kept selector and spacing")
