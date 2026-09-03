@@ -37,8 +37,8 @@ api_xml_path.write_text('''<brls:Box width="auto" height="auto" axis="column" pa
     <brls:Label id="api-source-selected" width="auto" height="auto" text="Selected: Miruro" marginTop="18" />
     <brls:Label width="auto" height="auto" text="Choose the anime metadata provider" marginTop="10" />
     <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="28" />
-    <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" marginTop="10" />
-    <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" marginTop="10" />
+    <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" marginTop="18" />
+    <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" marginTop="18" />
 </brls:Box>
 ''')
 
