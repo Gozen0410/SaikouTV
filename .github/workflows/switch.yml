@@ -67,13 +67,22 @@ jobs:
 
           p = Path('library/lib/views/tab_frame.cpp')
           s = p.read_text()
+          if '#include <tinyxml2.h>' not in s:
+              s = s.replace('#include <borealis/views/tab_frame.hpp>\n', '#include <borealis/views/tab_frame.hpp>\n#include <tinyxml2.h>\n', 1)
+
           marker = 'void TabFrame::addSeparator()'
           method = '''void TabFrame::setTabContent(View* content)\n{\n    if (!content)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    if (!contentView)\n    {\n        delete content;\n        return;\n    }\n\n    if (this->activeTab)\n    {\n        contentView->removeView(this->activeTab);\n        this->activeTab = nullptr;\n    }\n\n    content->setGrow(1.0f);\n    contentView->addView(content);\n    this->activeTab = content;\n}\n\n'''
           if 'void TabFrame::setTabContent(View* content)' not in s:
               if s.count(marker) != 1:
                   raise SystemExit(f'expected exactly one TabFrame addSeparator definition, found {s.count(marker)}')
               s = s.replace(marker, method + marker, 1)
-              p.write_text(s)
+
+          old_creator = '''            this->addTab(label, [viewElement] {\n                return View::createFromXMLElement(viewElement);\n            });'''
+          new_creator = '''            // The parsed XML DOM is temporary for createFromXMLString().\n            // Capture a serialized copy so the lazy creator never dereferences\n            // a dangling XMLElement when the sidebar item gains focus later.\n            tinyxml2::XMLPrinter printer(nullptr, true);\n            viewElement->Accept(&printer);\n            const std::string viewXml = printer.CStr();\n\n            this->addTab(label, [viewXml] {\n                return View::createFromXMLString(viewXml);\n            });'''
+          if old_creator not in s:
+              raise SystemExit('Could not locate original TabFrame XML creator block')
+          s = s.replace(old_creator, new_creator, 1)
+          p.write_text(s)
           PY
       - name: Apply Saikou trending carousel and controller navigation
         run: |
