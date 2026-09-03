@@ -7,10 +7,6 @@ if "SAIKOU_ANIME_DETAILS_V2" in source:
     print("Anime details click patch already installed")
     raise SystemExit(0)
 
-# V1 already creates the details Activity, but its A action is swallowed by the
-# carousel's card action because the card callback is the wrong abstraction for
-# navigation. Replace that callback with a direct Activity push while keeping
-# the existing details implementation untouched.
 old = '''        card->registerAction("Open anime", brls::BUTTON_A, [i](brls::View*) {
             char marker[64];
             std::snprintf(marker, sizeof(marker), "TRENDING CARD SELECTED %zu", i);
