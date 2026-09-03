@@ -29,10 +29,12 @@ if source.count(marker) != 1:
 source = source.replace(marker, replacement, 1)
 
 # Reuse the existing active-item subscription. Only request a rebuild when the
-# user actually returns to Home, and never while our own refresh is replacing
-# the Home content.
-old = '''                                item->getActiveEvent()->subscribe([](brls::View* active) {\n                                    g_activeSidebarItem = active;\n                                });'''
-new = '''                                item->getActiveEvent()->subscribe([](brls::View* active) {\n                                    g_activeSidebarItem = active;\n                                    if (g_homeContentInstalled && !g_homeRefreshInProgress && active == g_homeSidebarItem)\n                                        g_refreshRequested = true;\n                                });'''
+# user actually transitions from another tab back to Home. setTabContent() can
+# itself emit Home activation while replacing content; treating that as a real
+# navigation event causes an endless refresh loop, especially when the API is
+# offline and every refresh completes quickly.
+old = '''                                item->getActiveEvent()->subscribe([](brls::View* active) {\n                                    g_activeSidebarItem = active;\n                                    if (g_homeContentInstalled && !g_homeRefreshInProgress && active == g_homeSidebarItem)\n                                        g_refreshRequested = true;\n                                });'''
+new = '''                                item->getActiveEvent()->subscribe([](brls::View* active) {\n                                    brls::View* previous = g_activeSidebarItem;\n                                    g_activeSidebarItem = active;\n                                    if (g_homeContentInstalled && !g_homeRefreshInProgress &&\n                                        active == g_homeSidebarItem && previous != g_homeSidebarItem)\n                                        g_refreshRequested = true;\n                                });'''
 if source.count(old) != 1:
     raise SystemExit("Could not locate sidebar active-event subscription")
 source = source.replace(old, new, 1)
@@ -46,7 +48,7 @@ if source.count(marker) != 1:
 source = source.replace(marker, replacement, 1)
 
 # Guard the existing deferred refresh helper against an activation callback
-# firing while setTabContent() replaces the Home content. Clear the guard on
+# firing while our refresh is replacing the Home content. Clear the guard on
 # every early failure path so a later Home activation can retry normally.
 marker = '    log_stage("CONTROLLER REFRESH START");\n'
 replacement = marker + '    g_homeRefreshInProgress = true;\n'
@@ -67,4 +69,4 @@ if source.count(marker) != 1:
 source = source.replace(marker, replacement, 1)
 
 path.write_text(source)
-print("Home persistence patch applied: returning to Home now rebuilds the existing trending content")
+print("Home persistence patch applied: refresh only on a real transition back to Home")
