@@ -1,7 +1,7 @@
 from pathlib import Path
 
 source_path = Path("switch/source/main.cpp")
-xml_path = Path("switch/romfs/activity/main.xml")
+xml_path = Path("switch/romfs/xml/activity/main.xml")
 
 source = source_path.read_text()
 xml = xml_path.read_text()
@@ -35,7 +35,7 @@ if "View* getActiveTab() const" not in header:
 
 # Remove a prior generated binder if one exists, otherwise just insert a new
 # one. We use a stable helper anchor in the generated main.cpp rather than
-# requiring the binder itself to already exist.
+# requiring the binder itself to already exist in the checked-in main.cpp.
 start = source.find('static void bind_api_settings_actions(')
 if start != -1:
     end = source.find('\nstatic brls::View* load_home_content_from_xml()', start)
