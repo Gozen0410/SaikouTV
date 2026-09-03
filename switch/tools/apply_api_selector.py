@@ -90,6 +90,17 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     if (!current || !miruro || !animepahe || !gogoanime)
         return;
 
+    // The sidebar's active item is tracked by the controller-controls patch.
+    // Route the selector controls directly back to that item so LEFT returns
+    // to Settings instead of falling through TabFrame's default Home route.
+    if (g_activeSidebarItem)
+    {
+        settingsTab->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
+        miruro->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
+        animepahe->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
+        gogoanime->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
+    }
+
     miruro->registerClickAction([current](brls::View*) {
         g_apiSource = 0;
         current->setText("Anime API: Miruro");
@@ -135,8 +146,8 @@ new_settings = '''    <brls:Tab label="Settings">
             <brls:Label width="auto" height="auto" text="API Source" fontSize="36" />
             <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="20" />
             <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="10" />
-            <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" />
-            <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />
+            <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" marginTop="6" />
+            <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" marginTop="6" />
         </brls:Box>
     </brls:Tab>'''
 if old_settings in xml:
@@ -145,8 +156,8 @@ elif 'id="api-source-miruro"' not in xml or 'id="api-source-gogoanime"' not in x
     raise SystemExit("Could not locate Settings XML block")
 xml_path.write_text(xml)
 
-# Invalidate the bound-tab pointer when Settings is activated so that a newly
-# lazy-created XML tab gets its callbacks attached on the following frame.
+# Remove obsolete Settings activation/content replacement logic if an older
+# selector patch left it behind. Settings remains XML-owned.
 old_block = '''                        if (!sidebarContent->getChildren().empty())
                         {
                             brls::View* candidate = sidebarContent->getChildren().back();
@@ -163,27 +174,8 @@ old_block = '''                        if (!sidebarContent->getChildren().empty(
 if old_block in source:
     source = source.replace(old_block, '', 1)
 
-if "SETTINGS API ACTIVE ITEM TRACKING INSTALLED" not in source:
-    marker = '                        log_stage("SIDEBAR ACTIVE ITEM TRACKING INSTALLED");\n'
-    addition = marker + '''                        if (!sidebarContent->getChildren().empty())
-                        {
-                            brls::View* candidate = sidebarContent->getChildren().back();
-                            brls::SidebarItem* settingsItem = dynamic_cast<brls::SidebarItem*>(candidate);
-                            if (settingsItem)
-                            {
-                                settingsItem->getActiveEvent()->subscribe([](brls::View*) {
-                                    g_boundSettingsTab = nullptr;
-                                });
-                                log_stage("SETTINGS API ACTIVE ITEM TRACKING INSTALLED");
-                            }
-                        }
-'''
-    if source.count(marker) != 1:
-        raise SystemExit("Could not locate sidebar tracking completion")
-    source = source.replace(marker, addition, 1)
-
-# Bind only after the active XML tab exists. No Settings content replacement
-# occurs in the sidebar activation callback or main loop.
+# Bind the Settings controls after the XML-created active tab exists. No
+# Settings content replacement occurs here.
 if "bind_api_settings_actions(tabFrame);" not in source:
     marker = '    while (brls::Application::mainLoop())\n    {\n'
     addition = marker + '''        bind_api_settings_actions(tabFrame);
@@ -198,5 +190,6 @@ if 'load_api_source();' not in source:
         raise SystemExit("Could not locate app directory initialization")
     source = source.replace(marker, marker + '    load_api_source();\n', 1)
 
-source_path.write_text(source)
-print("API selector binding fixed: direct XML IDs, no getChildren traversal")
+path = source_path
+path.write_text(source)
+print("API selector spacing and Settings LEFT navigation fixed")
