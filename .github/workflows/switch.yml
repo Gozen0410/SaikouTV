@@ -58,7 +58,7 @@ jobs:
           p = Path('library/include/borealis/views/tab_frame.hpp')
           s = p.read_text()
           marker = '    void addSeparator();'
-          addition = '    // Attach already-created tab content through TabFrame\'s own content container.\n    void setTabContent(View* content);\n\n'
+          addition = "    // Attach already-created tab content through TabFrame's own content container.\n    void setTabContent(View* content);\n\n"
           if 'void setTabContent(View* content);' not in s:
               if s.count(marker) != 1:
                   raise SystemExit(f'expected exactly one TabFrame separator declaration, found {s.count(marker)}')
@@ -71,11 +71,20 @@ jobs:
               s = s.replace('#include <borealis/views/tab_frame.hpp>\n', '#include <borealis/views/tab_frame.hpp>\n#include <tinyxml2.h>\n', 1)
 
           marker = 'void TabFrame::addSeparator()'
-          method = '''void TabFrame::setTabContent(View* content)\n{\n    if (!content)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    if (!contentView)\n    {\n        delete content;\n        return;\n    }\n\n    if (this->activeTab)\n    {\n        contentView->removeView(this->activeTab);\n        this->activeTab = nullptr;\n    }\n\n    content->setGrow(1.0f);\n    contentView->addView(content);\n    this->activeTab = content;\n}\n\n'''
+          method = '''void TabFrame::setTabContent(View* content)\n{\n    if (!content)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    if (!contentView)\n    {\n        delete content;\n        return;\n    }\n\n    if (this->activeTab)\n    {\n        contentView->removeView(this->activeTab);\n        this->activeTab = nullptr;\n    }\n\n    content->setGrow(1.0f);\n    contentView->addView(content);\n    this->activeTab = content;\n\n    // Establish an explicit left/right focus bridge between the sidebar\n    // and the currently attached content region. This avoids depending on\n    // TabFrame's internal focus heuristics and keeps the route valid while\n    // the active tab is replaced.\n    View* sidebarFocus = this->sidebar->getDefaultFocus();\n    if (sidebarFocus)\n    {\n        sidebarFocus->setCustomNavigationRoute(FocusDirection::RIGHT, content);\n        content->setCustomNavigationRoute(FocusDirection::LEFT, sidebarFocus);\n    }\n}\n\n'''
           if 'void TabFrame::setTabContent(View* content)' not in s:
               if s.count(marker) != 1:
                   raise SystemExit(f'expected exactly one TabFrame addSeparator definition, found {s.count(marker)}')
               s = s.replace(marker, method + marker, 1)
+
+          # Add explicit left/right focus routes whenever the normal lazy tab
+          # creator switches the active content. The callback receives the
+          # actual SidebarItem, so no private TabFrame state is exposed.
+          old_add = '''        View* newContent = creator();\n\n        if (!newContent)\n            return;\n\n        newContent->setGrow(1.0f);'''
+          new_add = '''        View* newContent = creator();\n\n        if (!newContent)\n            return;\n\n        // Treat the tab content as one focusable region for now. Its internal\n        // controls can later provide their own routes without changing the\n        // sidebar/content boundary.\n        newContent->setFocusable(true);\n        view->setCustomNavigationRoute(FocusDirection::RIGHT, newContent);\n        newContent->setCustomNavigationRoute(FocusDirection::LEFT, view);\n\n        newContent->setGrow(1.0f);'''
+          if old_add not in s:
+              raise SystemExit('Could not locate TabFrame active-content creation block')
+          s = s.replace(old_add, new_add, 1)
 
           old_creator = '''            this->addTab(label, [viewElement] {\n                return View::createFromXMLElement(viewElement);\n            });'''
           new_creator = '''            // The parsed XML DOM is temporary for createFromXMLString().\n            // Capture a serialized copy so the lazy creator never dereferences\n            // a dangling XMLElement when the sidebar item gains focus later.\n            tinyxml2::XMLPrinter printer(nullptr, true);\n            viewElement->Accept(&printer);\n            const std::string viewXml = printer.CStr();\n\n            this->addTab(label, [viewXml] {\n                return View::createFromXMLString(viewXml);\n            });'''
