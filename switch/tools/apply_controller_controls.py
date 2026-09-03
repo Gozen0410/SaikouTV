@@ -19,11 +19,12 @@ if "g_refreshRequested" not in source:
 # focus traversal returns to the sidebar with LEFT.
 source = source.replace('        if (i == 0) brls::Application::giveFocus(card);\n', '', 1)
 
-# Add X/Y refresh and B back to the carousel's parent. Actions bubble from a
-# focused card to this viewport, so no raw TabFrame internals are required.
+# Add X/Y refresh actions to the carousel. Back is deliberately NOT handled
+# here: it must bubble through the content view to the TabFrame-level Back
+# action, which returns focus to the sidebar instead of popping the activity.
 if '"Refresh", brls::BUTTON_X' not in source:
     marker = '    void registerCardAction(brls::View* card, size_t index)\n    {\n'
-    addition = '''    void registerCardAction(brls::View* card, size_t index)\n    {\n        (void)index;\n        if (this->getActions().empty())\n        {\n            this->registerAction("Refresh", brls::BUTTON_X, [](brls::View*) {\n                g_refreshRequested = true;\n                return true;\n            });\n            this->registerAction("Refresh", brls::BUTTON_Y, [](brls::View*) {\n                g_refreshRequested = true;\n                return true;\n            });\n            this->registerAction("Back", brls::BUTTON_B, [](brls::View*) {\n                brls::Application::popActivity();\n                return true;\n            });\n        }\n'''
+    addition = '''    void registerCardAction(brls::View* card, size_t index)\n    {\n        (void)index;\n        if (this->getActions().empty())\n        {\n            this->registerAction("Refresh", brls::BUTTON_X, [](brls::View*) {\n                g_refreshRequested = true;\n                return true;\n            });\n            this->registerAction("Refresh", brls::BUTTON_Y, [](brls::View*) {\n                g_refreshRequested = true;\n                return true;\n            });\n        }\n'''
     if source.count(marker) != 1:
         raise SystemExit("Could not locate TrendingCarouselViewport::registerCardAction")
     source = source.replace(marker, addition, 1)
@@ -116,4 +117,4 @@ if "if (g_refreshRequested)" not in source:
     source = source.replace(marker, replacement, 1)
 
 path.write_text(source)
-print("Controller controls patch applied with native sidebar focus")
+print("Controller controls patch applied with native sidebar focus and tab-content Back routing")
