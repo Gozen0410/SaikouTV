@@ -7,18 +7,13 @@ if "g_apiSource" in source:
     print("API selector patch already present")
     raise SystemExit(0)
 
-# Add the selector state next to the existing Home persistence state.
 marker = 'static bool g_homeRefreshInProgress = false;\n'
 addition = marker + '''static int g_apiSource = 0; // 0=Miruro, 1=AnimePahe, 2=Gogoanime
-static bool g_settingsRefreshRequested = false;
-static brls::View* g_settingsSidebarItem = nullptr;
 '''
 if source.count(marker) != 1:
     raise SystemExit("Could not locate Home persistence globals")
 source = source.replace(marker, addition, 1)
 
-# Persistent selector storage. Keep it deliberately tiny and independent from
-# the API implementation so changing providers cannot corrupt Home state.
 marker = 'static brls::View* load_home_content_from_xml()\n'
 helper = r'''static constexpr const char* kSettingsPath = "sdmc:/switch/SaikouTV/settings.cfg";
 
@@ -60,37 +55,32 @@ static const char* api_source_name(int source)
 
 static brls::View* create_api_settings_content()
 {
-    brls::List* list = new brls::List();
-    list->addView(new brls::Header("API Source", false));
+    brls::Box* root = new brls::Box(brls::Axis::COLUMN);
+    root->setJustifyContent(brls::JustifyContent::FLEX_START);
 
-    brls::ListItem* apiItem = new brls::ListItem("Anime API");
-    apiItem->setValue(api_source_name(g_apiSource));
-    apiItem->getClickEvent()->subscribe([apiItem](brls::View*) {
-        brls::Dropdown::open(
-            "Anime API",
-            {"Miruro", "AnimePahe", "Gogoanime"},
-            [apiItem](int selection) {
-                if (selection < 0 || selection > 2)
-                    return;
+    brls::Header* header = new brls::Header("API Source");
+    root->addView(header);
 
-                g_apiSource = selection;
-                apiItem->setValue(api_source_name(g_apiSource));
-                save_api_source();
-                char marker[96];
-                std::snprintf(marker, sizeof(marker), "API SOURCE SELECTED %s", api_source_name(g_apiSource));
-                log_stage(marker);
-            },
-            g_apiSource);
-    });
-    list->addView(apiItem);
+    brls::Label* current = new brls::Label();
+    current->setText("Anime API");
+    current->setFontSize(18);
+    root->addView(current);
 
-    brls::Label* note = new brls::Label();
-    note->setText("Select the provider used by Saikou Switch.");
-    note->setFontSize(15);
-    note->setMargins(0, 12, 0, 0);
-    list->addView(note);
+    const char* providers[] = {"Miruro", "AnimePahe", "Gogoanime"};
+    for (int i = 0; i < 3; ++i)
+    {
+        brls::Button* button = new brls::Button(providers[i]);
+        button->registerClickAction([i, current, providers](brls::View*) {
+            g_apiSource = i;
+            current->setText(std::string("Anime API: ") + providers[i]);
+            save_api_source();
+            return true;
+        });
+        root->addView(button);
+    }
 
-    return list;
+    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+    return root;
 }
 
 static void refresh_settings_content(brls::TabFrame* tabFrame)
@@ -115,22 +105,19 @@ if source.count(marker) != 1:
     raise SystemExit("Could not locate Home refresh helper boundary")
 source = source.replace(marker, helper + marker, 1)
 
-# Add the Settings sidebar pointer and an activation callback to the existing
-# public SidebarItem tracking. Settings is the last sidebar item in main.xml.
+# Defer the Settings content replacement to the frame loop. The Settings
+# sidebar item is discovered from the existing sidebar children.
 marker = '                        log_stage("SIDEBAR ACTIVE ITEM TRACKING INSTALLED");\n'
 addition = marker + '''                        if (!sidebarContent->getChildren().empty())
                         {
-                            g_settingsSidebarItem = sidebarContent->getChildren().back();
-                            if (g_settingsSidebarItem)
+                            brls::View* candidate = sidebarContent->getChildren().back();
+                            brls::SidebarItem* settingsItem = dynamic_cast<brls::SidebarItem*>(candidate);
+                            if (settingsItem)
                             {
-                                brls::SidebarItem* settingsItem = dynamic_cast<brls::SidebarItem*>(g_settingsSidebarItem);
-                                if (settingsItem)
-                                {
-                                    settingsItem->getActiveEvent()->subscribe([](brls::View*) {
-                                        g_settingsRefreshRequested = true;
-                                    });
-                                    log_stage("SETTINGS ACTIVE ITEM TRACKING INSTALLED");
-                                }
+                                settingsItem->getActiveEvent()->subscribe([](brls::View*) {
+                                    g_settingsRefreshRequested = true;
+                                });
+                                log_stage("SETTINGS ACTIVE ITEM TRACKING INSTALLED");
                             }
                         }
 '''
@@ -138,8 +125,6 @@ if source.count(marker) != 1:
     raise SystemExit("Could not locate sidebar tracking completion")
 source = source.replace(marker, addition, 1)
 
-# Process Settings refresh between frames, just like Home refresh, so the
-# active-item callback never replaces a view during input dispatch.
 marker = '        if (g_refreshRequested)\n        {\n            g_refreshRequested = false;\n            refresh_home_content(tabFrame);\n        }\n\n'
 addition = marker + '''        if (g_settingsRefreshRequested)
         {
@@ -152,7 +137,6 @@ if source.count(marker) != 1:
     raise SystemExit("Could not locate deferred refresh processing")
 source = source.replace(marker, addition, 1)
 
-# Load the persisted provider before the first UI is created.
 marker = '    ensure_app_dirs();\n'
 replacement = marker + '    load_api_source();\n'
 if source.count(marker) != 1:
