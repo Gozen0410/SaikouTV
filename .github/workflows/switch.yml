@@ -77,9 +77,6 @@ jobs:
                   raise SystemExit(f'expected exactly one TabFrame addSeparator definition, found {s.count(marker)}')
               s = s.replace(marker, method + marker, 1)
 
-          # Add explicit left/right focus routes whenever the normal lazy tab
-          # creator switches the active content. The callback receives the
-          # actual SidebarItem, so no private TabFrame state is exposed.
           old_add = '''        View* newContent = creator();\n\n        if (!newContent)\n            return;\n\n        newContent->setGrow(1.0f);'''
           new_add = '''        View* newContent = creator();\n\n        if (!newContent)\n            return;\n\n        // Treat the tab content as one focusable region for now. Its internal\n        // controls can later provide their own routes without changing the\n        // sidebar/content boundary.\n        newContent->setFocusable(true);\n        view->setCustomNavigationRoute(FocusDirection::RIGHT, newContent);\n        newContent->setCustomNavigationRoute(FocusDirection::LEFT, view);\n\n        newContent->setGrow(1.0f);'''
           if old_add not in s:
@@ -111,6 +108,14 @@ jobs:
           grep -q 'BUTTON_X' switch/source/main.cpp
           grep -q 'BUTTON_Y' switch/source/main.cpp
           grep -q 'setGlobalQuit(true)' switch/source/main.cpp
+      - name: Fix Home content persistence
+        run: |
+          set -eux
+          python3 -m py_compile switch/tools/fix_home_persistence.py
+          python3 switch/tools/fix_home_persistence.py
+          grep -q 'g_homeSidebarItem' switch/source/main.cpp
+          grep -q 'g_homeContentInstalled' switch/source/main.cpp
+          grep -q 'active == g_homeSidebarItem' switch/source/main.cpp
       - name: Build ELF
         working-directory: switch
         run: |
