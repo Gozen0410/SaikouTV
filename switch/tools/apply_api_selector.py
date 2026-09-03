@@ -112,6 +112,17 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     });
 
     current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+
+    // The Settings selector buttons live inside the Settings content. Route
+    // LEFT explicitly to the currently active Settings sidebar item so it
+    // cannot fall through the generic TabFrame content route to Home.
+    if (g_activeSidebarItem)
+    {
+        miruro->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
+        animepahe->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
+        gogoanime->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
+    }
+
     g_boundSettingsTab = settingsTab;
     log_stage("SETTINGS API ACTIONS BOUND");
 }
@@ -121,9 +132,7 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
         raise SystemExit("Could not locate Home XML helper boundary")
     source = source.replace(marker, helper + marker, 1)
 
-# Replace the placeholder Settings body with a static XML selector. IDs let
-# the runtime bind directly through View::getView(), which is supported by the
-# pinned Borealis version and avoids requiring a public child-vector API.
+# Replace the placeholder Settings body with the working selector XML.
 old_settings = '''    <brls:Tab label="Settings">
         <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
@@ -199,4 +208,4 @@ if 'load_api_source();' not in source:
     source = source.replace(marker, marker + '    load_api_source();\n', 1)
 
 source_path.write_text(source)
-print("API selector binding fixed: direct XML IDs, no getChildren traversal")
+print("API selector binding fixed: direct XML IDs, LEFT routes back to Settings")
