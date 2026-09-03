@@ -7,10 +7,10 @@ borealis_header = Path("switch/borealis/library/include/borealis/views/tab_frame
 source = source_path.read_text()
 xml = xml_path.read_text()
 
-# Keep Settings content XML-owned. Replacing the currently active Settings
-# view with TabFrame::setTabContent() crashes this pinned Borealis build and
-# also disappears when the tab is recreated. Instead, put the three buttons in
-# the normal Settings XML and bind their actions after TabFrame creates them.
+# Keep Settings content XML-owned. Replacing the active Settings view with
+# setTabContent() is unsafe on the pinned Borealis build and also disappears
+# when the tab is recreated. The selector therefore lives in normal Settings
+# XML and its actions are attached after Borealis creates the tab.
 
 if "static int g_apiSource" not in source:
     marker = 'static bool g_homeRefreshInProgress = false;\n'
@@ -21,7 +21,8 @@ static brls::View* g_boundSettingsTab = nullptr;
         raise SystemExit("Could not locate Home persistence globals")
     source = source.replace(marker, addition, 1)
 
-# Add the minimal accessor needed to inspect the XML-created active tab.
+# The Settings tab is XML-created, so expose only the active tab pointer from
+# the already-patched TabFrame. No content is replaced through this accessor.
 header = borealis_header.read_text()
 if "View* getActiveTab() const" not in header:
     marker = '    void addSeparator();\n'
@@ -30,14 +31,6 @@ if "View* getActiveTab() const" not in header:
         raise SystemExit("Could not locate TabFrame addSeparator declaration")
     header = header.replace(marker, addition, 1)
     borealis_header.write_text(header)
-
-# The main source already uses <functional> in the controller patch on some
-# revisions, but make the dependency explicit for the recursive visitor.
-if '#include <functional>' not in source:
-    marker = '#include <algorithm>\n'
-    if source.count(marker) != 1:
-        raise SystemExit("Could not locate standard include boundary")
-    source = source.replace(marker, marker + '#include <functional>\n', 1)
 
 # Persistent provider selection helpers.
 if "static const char* api_source_name" not in source:
@@ -89,57 +82,38 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     if (!settingsTab || settingsTab == g_boundSettingsTab)
         return;
 
-    brls::Label* current = nullptr;
-    std::vector<brls::Button*> buttons;
+    brls::Label* current = dynamic_cast<brls::Label*>(settingsTab->getView("api-source-current"));
+    brls::Button* miruro = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-miruro"));
+    brls::Button* animepahe = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-animepahe"));
+    brls::Button* gogoanime = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-gogoanime"));
 
-    std::function<void(brls::View*)> visit = [&](brls::View* view) {
-        if (!view)
-            return;
-
-        if (brls::Label* label = dynamic_cast<brls::Label*>(view))
-        {
-            const std::string text = label->getFullText();
-            if (text == "Anime API: Miruro" || text == "Anime API: AnimePahe" || text == "Anime API: Gogoanime")
-                current = label;
-        }
-
-        if (brls::Button* button = dynamic_cast<brls::Button*>(view))
-            buttons.push_back(button);
-
-        for (brls::View* child : view->getChildren())
-            visit(child);
-    };
-
-    visit(settingsTab);
-    if (!current || buttons.size() < 3)
+    if (!current || !miruro || !animepahe || !gogoanime)
         return;
 
-    int bound = 0;
-    for (brls::Button* button : buttons)
-    {
-        const std::string name = button->getText();
-        int source = -1;
-        if (name == "Miruro") source = 0;
-        else if (name == "AnimePahe") source = 1;
-        else if (name == "Gogoanime") source = 2;
-        if (source < 0)
-            continue;
+    miruro->registerClickAction([current](brls::View*) {
+        g_apiSource = 0;
+        current->setText("Anime API: Miruro");
+        save_api_source();
+        return true;
+    });
 
-        button->registerClickAction([source, current](brls::View*) {
-            g_apiSource = source;
-            current->setText(std::string("Anime API: ") + api_source_name(source));
-            save_api_source();
-            return true;
-        });
-        ++bound;
-    }
+    animepahe->registerClickAction([current](brls::View*) {
+        g_apiSource = 1;
+        current->setText("Anime API: AnimePahe");
+        save_api_source();
+        return true;
+    });
 
-    if (bound == 3)
-    {
-        current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
-        g_boundSettingsTab = settingsTab;
-        log_stage("SETTINGS API ACTIONS BOUND");
-    }
+    gogoanime->registerClickAction([current](brls::View*) {
+        g_apiSource = 2;
+        current->setText("Anime API: Gogoanime");
+        save_api_source();
+        return true;
+    });
+
+    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+    g_boundSettingsTab = settingsTab;
+    log_stage("SETTINGS API ACTIONS BOUND");
 }
 
 '''
@@ -147,7 +121,9 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
         raise SystemExit("Could not locate Home XML helper boundary")
     source = source.replace(marker, helper + marker, 1)
 
-# Replace the placeholder Settings tab with a static, safe XML UI.
+# Replace the placeholder Settings body with a static XML selector. IDs let
+# the runtime bind directly through View::getView(), which is supported by the
+# pinned Borealis version and avoids requiring a public child-vector API.
 old_settings = '''    <brls:Tab label="Settings">
         <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
@@ -157,21 +133,20 @@ old_settings = '''    <brls:Tab label="Settings">
 new_settings = '''    <brls:Tab label="Settings">
         <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="API Source" fontSize="36" />
-            <brls:Label width="auto" height="auto" text="Anime API: Miruro" marginTop="20" />
-            <brls:Button width="auto" height="auto" text="Miruro" marginTop="10" />
-            <brls:Button width="auto" height="auto" text="AnimePahe" />
-            <brls:Button width="auto" height="auto" text="Gogoanime" />
+            <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="20" />
+            <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="10" />
+            <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" />
+            <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />
         </brls:Box>
     </brls:Tab>'''
 if old_settings in xml:
     xml = xml.replace(old_settings, new_settings, 1)
-elif 'text="AnimePahe"' not in xml or 'text="Gogoanime"' not in xml:
+elif 'id="api-source-miruro"' not in xml or 'id="api-source-gogoanime"' not in xml:
     raise SystemExit("Could not locate Settings XML block")
 xml_path.write_text(xml)
 
-# The Settings activation callback only invalidates the pointer. No view is
-# replaced from inside the event callback. The main loop binds actions to the
-# newly-created tab on the following frame.
+# Invalidate the bound-tab pointer when Settings is activated so that a newly
+# lazy-created XML tab gets its callbacks attached on the following frame.
 old_block = '''                        if (!sidebarContent->getChildren().empty())
                         {
                             brls::View* candidate = sidebarContent->getChildren().back();
@@ -207,7 +182,8 @@ if "SETTINGS API ACTIVE ITEM TRACKING INSTALLED" not in source:
         raise SystemExit("Could not locate sidebar tracking completion")
     source = source.replace(marker, addition, 1)
 
-# Bind after the current TabFrame has completed its lazy XML tab creation.
+# Bind only after the active XML tab exists. No Settings content replacement
+# occurs in the sidebar activation callback or main loop.
 if "bind_api_settings_actions(tabFrame);" not in source:
     marker = '    while (brls::Application::mainLoop())\n    {\n'
     addition = marker + '''        bind_api_settings_actions(tabFrame);
@@ -223,4 +199,4 @@ if 'load_api_source();' not in source:
     source = source.replace(marker, marker + '    load_api_source();\n', 1)
 
 source_path.write_text(source)
-print("API selector converted to static Settings XML with deferred action binding")
+print("API selector binding fixed: direct XML IDs, no getChildren traversal")
