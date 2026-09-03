@@ -3,8 +3,9 @@ from pathlib import Path
 path = Path("switch/source/main.cpp")
 source = path.read_text()
 
-# This patch intentionally builds on the known-good carousel patch. It adds
-# controller behavior without touching TabFrame internals.
+# Controller behavior is layered on top of the stable carousel and TabFrame
+# lifetime fix. Do not bypass Borealis focus; the normal TabFrame/sidebar
+# navigation is now safe and should own initial focus.
 if "g_refreshRequested" not in source:
     marker = 'static FILE* g_log = nullptr;\n'
     addition = marker + 'static bool g_refreshRequested = false;\n'
@@ -12,14 +13,11 @@ if "g_refreshRequested" not in source:
         raise SystemExit("Could not locate log global")
     source = source.replace(marker, addition, 1)
 
-# Give the first trending card initial focus. Borealis handles D-pad/analog
-# navigation from there, and the card's A action remains the selector.
-if "Application::giveFocus(card);" not in source:
-    marker = '        row->addView(card);\n'
-    replacement = marker + '        if (i == 0) brls::Application::giveFocus(card);\n'
-    if source.count(marker) != 1:
-        raise SystemExit(f"expected one carousel card insertion point, found {source.count(marker)}")
-    source = source.replace(marker, replacement, 1)
+# Do NOT force focus onto a carousel card here. The Activity/TabFrame normal
+# default-focus path should initially focus the sidebar. Borealis' native
+# SidebarItem A action already enters the content area, and the row-based
+# focus traversal returns to the sidebar with LEFT.
+source = source.replace('        if (i == 0) brls::Application::giveFocus(card);\n', '', 1)
 
 # Add X/Y refresh and B back to the carousel's parent. Actions bubble from a
 # focused card to this viewport, so no raw TabFrame internals are required.
@@ -88,6 +86,7 @@ static void refresh_home_content(brls::TabFrame* tabFrame)
     brls::Box* homeBox = dynamic_cast<brls::Box*>(homeContent);
     if (homeBox)
     {
+        homeBox->setFocusable(true);
         brls::Label* status = new brls::Label();
         status->setText(api.status.empty() ? "Refresh complete" : api.status);
         status->setFontSize(16);
@@ -105,7 +104,7 @@ static void refresh_home_content(brls::TabFrame* tabFrame)
         raise SystemExit("Could not locate main() boundary")
     source = source.replace(main_marker, helper + main_marker, 1)
 
-# + should use Borealis' normal global quit action.
+# Keep the normal Borealis global quit action enabled.
 source = source.replace('brls::Application::setGlobalQuit(false);', 'brls::Application::setGlobalQuit(true);', 1)
 
 # Process a deferred X/Y refresh between Borealis frames.
@@ -117,4 +116,4 @@ if "if (g_refreshRequested)" not in source:
     source = source.replace(marker, replacement, 1)
 
 path.write_text(source)
-print("Controller controls patch applied")
+print("Controller controls patch applied with native sidebar focus")
