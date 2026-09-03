@@ -10,6 +10,7 @@ if "g_apiSource" in source:
 marker = 'static bool g_homeRefreshInProgress = false;\n'
 addition = marker + '''static int g_apiSource = 0; // 0=Miruro, 1=AnimePahe, 2=Gogoanime
 static bool g_settingsRefreshRequested = false;
+static bool g_settingsContentInstalled = false;
 '''
 if source.count(marker) != 1:
     raise SystemExit("Could not locate Home persistence globals")
@@ -73,9 +74,9 @@ static brls::View* create_api_settings_content()
     {
         brls::Button* button = new brls::Button();
         button->setText(providers[i]);
-        button->registerClickAction([i, current, providers](brls::View*) {
+        button->registerClickAction([i, current](brls::View*) {
             g_apiSource = i;
-            current->setText(std::string("Anime API: ") + providers[i]);
+            current->setText(std::string("Anime API: ") + api_source_name(i));
             save_api_source();
             return true;
         });
@@ -87,7 +88,7 @@ static brls::View* create_api_settings_content()
 
 static void refresh_settings_content(brls::TabFrame* tabFrame)
 {
-    if (!tabFrame)
+    if (!tabFrame || g_settingsContentInstalled)
         return;
 
     log_stage("SETTINGS CONTENT REFRESH START");
@@ -97,6 +98,10 @@ static void refresh_settings_content(brls::TabFrame* tabFrame)
         log_stage("SETTINGS CONTENT CREATE FAILED");
         return;
     }
+
+    // Mark this before attaching. setTabContent may synchronously cause
+    // sidebar/content events; those must not schedule another replacement.
+    g_settingsContentInstalled = true;
     tabFrame->setTabContent(settingsContent);
     log_stage("SETTINGS CONTENT ATTACHED");
 }
