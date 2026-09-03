@@ -9,6 +9,7 @@ if "g_apiSource" in source:
 
 marker = 'static bool g_homeRefreshInProgress = false;\n'
 addition = marker + '''static int g_apiSource = 0; // 0=Miruro, 1=AnimePahe, 2=Gogoanime
+static bool g_settingsRefreshRequested = false;
 '''
 if source.count(marker) != 1:
     raise SystemExit("Could not locate Home persistence globals")
@@ -22,7 +23,6 @@ static void load_api_source()
     FILE* file = std::fopen(kSettingsPath, "rb");
     if (!file)
         return;
-
     int value = 0;
     if (std::fscanf(file, "%d", &value) == 1 && value >= 0 && value <= 2)
         g_apiSource = value;
@@ -37,7 +37,6 @@ static void save_api_source()
         log_stage("API SOURCE SETTINGS SAVE FAILED");
         return;
     }
-
     std::fprintf(file, "%d\n", g_apiSource);
     std::fclose(file);
     log_stage("API SOURCE SETTINGS SAVED");
@@ -56,20 +55,24 @@ static const char* api_source_name(int source)
 static brls::View* create_api_settings_content()
 {
     brls::Box* root = new brls::Box(brls::Axis::COLUMN);
-    root->setJustifyContent(brls::JustifyContent::FLEX_START);
+    root->setPadding(40, 50, 40, 50);
 
-    brls::Header* header = new brls::Header("API Source");
-    root->addView(header);
+    brls::Label* title = new brls::Label();
+    title->setText("API Source");
+    title->setFontSize(36);
+    root->addView(title);
 
     brls::Label* current = new brls::Label();
-    current->setText("Anime API");
-    current->setFontSize(18);
+    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+    current->setFontSize(22);
+    current->setMarginTop(20);
     root->addView(current);
 
     const char* providers[] = {"Miruro", "AnimePahe", "Gogoanime"};
     for (int i = 0; i < 3; ++i)
     {
-        brls::Button* button = new brls::Button(providers[i]);
+        brls::Button* button = new brls::Button();
+        button->setText(providers[i]);
         button->registerClickAction([i, current, providers](brls::View*) {
             g_apiSource = i;
             current->setText(std::string("Anime API: ") + providers[i]);
@@ -79,7 +82,6 @@ static brls::View* create_api_settings_content()
         root->addView(button);
     }
 
-    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
     return root;
 }
 
@@ -95,7 +97,6 @@ static void refresh_settings_content(brls::TabFrame* tabFrame)
         log_stage("SETTINGS CONTENT CREATE FAILED");
         return;
     }
-
     tabFrame->setTabContent(settingsContent);
     log_stage("SETTINGS CONTENT ATTACHED");
 }
@@ -105,8 +106,6 @@ if source.count(marker) != 1:
     raise SystemExit("Could not locate Home refresh helper boundary")
 source = source.replace(marker, helper + marker, 1)
 
-# Defer the Settings content replacement to the frame loop. The Settings
-# sidebar item is discovered from the existing sidebar children.
 marker = '                        log_stage("SIDEBAR ACTIVE ITEM TRACKING INSTALLED");\n'
 addition = marker + '''                        if (!sidebarContent->getChildren().empty())
                         {
