@@ -1,0 +1,3 @@
+# Layout-only patch marker for the API source activity.
+# The workflow applies the wrapper layout directly after the API source page
+# generator so the provider focus frames have dedicated vertical space.
