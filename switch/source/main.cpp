@@ -53,7 +53,9 @@ static size_t file_write_callback(char* ptr, size_t size, size_t nmemb, void* us
 class HomeActivity : public brls::Activity
 {
 public:
-    brls::View* getDefaultFocus() override { return nullptr; }
+    // Use Borealis' normal focus resolution now that the TabFrame lazy
+    // creator lifetime is fixed. This makes the sidebar receive initial focus.
+    brls::View* getDefaultFocus() override { return brls::Activity::getDefaultFocus(); }
     brls::View* createContentView() override
     {
         return brls::View::createFromXMLResource("activity/main.xml");
@@ -84,26 +86,21 @@ static bool api_response_is_valid(CURLcode requestRc, long httpCode, const std::
 static ApiResult run_api_probe()
 {
     ApiResult result;
-
     log_stage("BEFORE SOCKET INITIALIZE");
     Result socketRc = socketInitializeDefault();
     bool socketOwned = false;
-
     if (R_SUCCEEDED(socketRc))
     {
         socketOwned = true;
         log_stage("SOCKET INITIALIZE OK");
     }
     else if (socketRc == MAKERESULT(Module_Libnx, LibnxError_AlreadyInitialized))
-    {
         log_stage("SOCKET ALREADY INITIALIZED - REUSING EXISTING SOCKET DEVICE");
-    }
     else
     {
         char marker[128];
         std::snprintf(marker, sizeof(marker), "SOCKET INITIALIZE FAILED RC 0x%08X LAST 0x%08X", static_cast<unsigned int>(socketRc), static_cast<unsigned int>(socketGetLastResult()));
         log_stage(marker);
-
         SocketInitConfig config = *socketGetDefaultInitConfig();
         config.bsd_service_type = BsdServiceType_Auto;
         log_stage("BEFORE SOCKET AUTO INITIALIZE");
@@ -158,7 +155,6 @@ static ApiResult run_api_probe()
     bool primaryOk = false;
     CURLcode requestRc = CURLE_OK;
     long httpCode = 0;
-
     for (int attempt = 1; attempt <= 3 && !primaryOk; ++attempt)
     {
         char marker[64];
@@ -179,16 +175,13 @@ static ApiResult run_api_probe()
     else
     {
         log_stage("MIRURO FAILED - STARTING ANILIST FALLBACK");
-
         curl_easy_reset(curl);
         response.clear();
         const char* anilistUrl = "https://graphql.anilist.co";
         const char* anilistBody = "{\"query\":\"query { Page(page: 1, perPage: 6) { results: media(type: ANIME, sort: TRENDING_DESC) { title { english romaji native } coverImage { large } format averageScore } } }\"}";
-
         struct curl_slist* headers = nullptr;
         headers = curl_slist_append(headers, "Content-Type: application/json");
         headers = curl_slist_append(headers, "Accept: application/json");
-
         log_stage("BEFORE ANILIST FALLBACK REQUEST");
         curl_easy_setopt(curl, CURLOPT_URL, anilistUrl);
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
@@ -202,11 +195,9 @@ static ApiResult run_api_probe()
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "SaikouSwitch/0.2");
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, api_write_callback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-
         requestRc = curl_easy_perform(curl);
         httpCode = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-
         const bool fallbackOk = api_response_is_valid(requestRc, httpCode, response, "ANILIST FALLBACK REQUEST");
         if (fallbackOk)
         {
@@ -214,10 +205,7 @@ static ApiResult run_api_probe()
             result.response = response;
         }
         else
-        {
             result.status = "API request failed - UI still running";
-        }
-
         curl_slist_free_all(headers);
     }
 
@@ -231,18 +219,15 @@ static ApiResult run_api_probe()
 static bool download_image(const std::string& url, const std::string& path)
 {
     if (url.empty()) return false;
-
     log_stage("BEFORE COVER IMAGE DOWNLOAD");
     Result socketRc = socketInitializeDefault();
     bool socketOwned = false;
-    if (R_SUCCEEDED(socketRc))
-        socketOwned = true;
+    if (R_SUCCEEDED(socketRc)) socketOwned = true;
     else if (socketRc != MAKERESULT(Module_Libnx, LibnxError_AlreadyInitialized))
     {
         log_stage("COVER IMAGE SOCKET INITIALIZE FAILED");
         return false;
     }
-
     CURLcode globalRc = curl_global_init(CURL_GLOBAL_DEFAULT);
     if (globalRc != CURLE_OK)
     {
@@ -250,7 +235,6 @@ static bool download_image(const std::string& url, const std::string& path)
         if (socketOwned) socketExit();
         return false;
     }
-
     CURL* curl = curl_easy_init();
     FILE* file = std::fopen(path.c_str(), "wb");
     if (!curl || !file)
@@ -262,7 +246,6 @@ static bool download_image(const std::string& url, const std::string& path)
         if (socketOwned) socketExit();
         return false;
     }
-
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
@@ -272,7 +255,6 @@ static bool download_image(const std::string& url, const std::string& path)
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "SaikouSwitch/0.2");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, file);
-
     CURLcode requestRc = curl_easy_perform(curl);
     long httpCode = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
@@ -280,14 +262,12 @@ static bool download_image(const std::string& url, const std::string& path)
     curl_easy_cleanup(curl);
     curl_global_cleanup();
     if (socketOwned) socketExit();
-
     if (requestRc != CURLE_OK || httpCode < 200 || httpCode >= 300)
     {
         std::remove(path.c_str());
         log_stage("COVER IMAGE DOWNLOAD FAILED");
         return false;
     }
-
     log_stage("COVER IMAGE DOWNLOAD OK");
     return true;
 }
@@ -297,12 +277,10 @@ static std::string json_string_after(const std::string& text, size_t from, const
     const std::string needle = std::string("\"") + key + "\"";
     size_t keyPos = text.find(needle, from);
     if (keyPos == std::string::npos || keyPos >= limit) return std::string();
-
     size_t colon = text.find(':', keyPos + needle.size());
     if (colon == std::string::npos || colon >= limit) return std::string();
     size_t quote = text.find('"', colon + 1);
     if (quote == std::string::npos || quote >= limit) return std::string();
-
     std::string value;
     for (size_t i = quote + 1; i < limit; ++i)
     {
@@ -328,7 +306,6 @@ static std::string json_value_after(const std::string& text, size_t from, const 
     if (keyPos == std::string::npos || keyPos >= limit) return std::string();
     size_t colon = text.find(':', keyPos + needle.size());
     if (colon == std::string::npos || colon >= limit) return std::string();
-
     size_t start = colon + 1;
     while (start < limit && (text[start] == ' ' || text[start] == '\n' || text[start] == '\r' || text[start] == '\t')) ++start;
     size_t end = start;
@@ -349,7 +326,6 @@ static std::vector<std::string> extract_trending_titles(const std::string& respo
     std::vector<std::string> titles;
     size_t resultsPos = response.find("\"results\"");
     if (resultsPos == std::string::npos) return titles;
-
     size_t cursor = resultsPos;
     while (titles.size() < 6)
     {
@@ -359,7 +335,6 @@ static std::vector<std::string> extract_trending_titles(const std::string& respo
         if (objectStart == std::string::npos) break;
         size_t objectEnd = response.find('}', objectStart + 1);
         if (objectEnd == std::string::npos) break;
-
         std::string title = json_string_after(response, objectStart, "english", objectEnd);
         if (title.empty()) title = json_string_after(response, objectStart, "romaji", objectEnd);
         if (title.empty()) title = json_string_after(response, objectStart, "native", objectEnd);
@@ -374,7 +349,6 @@ static std::vector<std::string> extract_trending_details(const std::string& resp
     std::vector<std::string> details;
     size_t resultsPos = response.find("\"results\"");
     if (resultsPos == std::string::npos) return details;
-
     size_t cursor = resultsPos;
     while (details.size() < 6)
     {
@@ -384,14 +358,11 @@ static std::vector<std::string> extract_trending_details(const std::string& resp
         if (objectStart == std::string::npos) break;
         size_t objectEnd = response.find('}', objectStart + 1);
         if (objectEnd == std::string::npos) break;
-
         size_t itemEnd = response.find("\"title\"", objectEnd + 1);
         if (itemEnd == std::string::npos) itemEnd = response.size();
-
         std::string format = json_string_after(response, objectEnd, "format", itemEnd);
         if (format.empty()) format = json_string_after(response, objectEnd, "type", itemEnd);
         std::string score = json_value_after(response, objectEnd, "averageScore", itemEnd);
-
         std::string detail;
         if (!format.empty()) detail += format;
         if (!score.empty() && score != "null")
@@ -410,7 +381,6 @@ static std::vector<std::string> extract_trending_covers(const std::string& respo
     std::vector<std::string> covers;
     size_t resultsPos = response.find("\"results\"");
     if (resultsPos == std::string::npos) return covers;
-
     size_t cursor = resultsPos;
     while (covers.size() < 6)
     {
@@ -429,71 +399,55 @@ static std::string compact_title(const std::string& title)
 {
     constexpr size_t kMaxLineChars = 18;
     constexpr size_t kMaxTotalChars = 36;
-
-    if (title.size() <= kMaxLineChars)
-        return title;
-
+    if (title.size() <= kMaxLineChars) return title;
     std::string compact = title;
     if (compact.size() > kMaxTotalChars)
     {
         compact.resize(kMaxTotalChars - 3);
         const size_t lastSpace = compact.find_last_of(' ');
-        if (lastSpace != std::string::npos && lastSpace >= 10)
-            compact.resize(lastSpace);
+        if (lastSpace != std::string::npos && lastSpace >= 10) compact.resize(lastSpace);
         compact += "...";
     }
-
     size_t split = compact.find_last_of(' ', kMaxLineChars);
-    if (split == std::string::npos || split < 8)
-        split = kMaxLineChars;
-
+    if (split == std::string::npos || split < 8) split = kMaxLineChars;
     std::string first = compact.substr(0, split);
     std::string second = compact.substr(split);
     while (!second.empty() && second.front() == ' ') second.erase(second.begin());
-
     if (second.size() > kMaxLineChars)
     {
         second.resize(kMaxLineChars - 3);
         const size_t lastSpace = second.find_last_of(' ');
-        if (lastSpace != std::string::npos && lastSpace >= 6)
-            second.resize(lastSpace);
+        if (lastSpace != std::string::npos && lastSpace >= 6) second.resize(lastSpace);
         second += "...";
     }
-
     return first + "\n" + second;
 }
 
 static void render_trending(brls::Box* homeBox, const std::string& response)
 {
     if (!homeBox || response.empty()) return;
-
     log_stage("BEFORE TRENDING PARSE");
     std::vector<std::string> titles = extract_trending_titles(response);
     std::vector<std::string> details = extract_trending_details(response);
     std::vector<std::string> covers = extract_trending_covers(response);
-
     char marker[64];
     std::snprintf(marker, sizeof(marker), "TRENDING PARSE FOUND %zu TITLES", titles.size());
     log_stage(marker);
-
     if (titles.empty())
     {
         log_stage("TRENDING PARSE FOUND NO TITLES");
         return;
     }
-
     brls::Label* heading = new brls::Label();
     heading->setText("Trending Now");
     heading->setFontSize(27);
     heading->setMargins(0, 10, 0, 0);
     homeBox->addView(heading);
-
     brls::Box* row = new brls::Box(brls::Axis::ROW);
     row->setGrow(0.0f);
     row->setAlignItems(brls::AlignItems::FLEX_START);
     row->setMargins(0, 7, 0, 0);
     homeBox->addView(row);
-
     const size_t cardCount = std::min<size_t>(titles.size(), 6);
     for (size_t i = 0; i < cardCount; ++i)
     {
@@ -504,7 +458,6 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
         card->setHighlightPadding(5.0f);
         card->setCornerRadius(5.0f);
         card->setFocusSound(brls::SOUND_FOCUS_CHANGE);
-
         bool imageAttached = false;
         if (i < covers.size() && !covers[i].empty())
         {
@@ -524,7 +477,6 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
                 log_stage("TRENDING CARD IMAGE ATTACHED");
             }
         }
-
         if (!imageAttached)
         {
             brls::Label* missing = new brls::Label();
@@ -533,7 +485,6 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
             missing->setSingleLine(true);
             card->addView(missing);
         }
-
         brls::Label* title = new brls::Label();
         title->setText(compact_title(titles[i]));
         title->setFontSize(14);
@@ -542,7 +493,6 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
         title->setMargins(2, 4, 2, 0);
         title->setFocusable(false);
         card->addView(title);
-
         if (i < details.size() && !details[i].empty())
         {
             brls::Label* detail = new brls::Label();
@@ -555,17 +505,14 @@ static void render_trending(brls::Box* homeBox, const std::string& response)
             detail->setFocusable(false);
             card->addView(detail);
         }
-
         card->registerAction("Open anime", brls::BUTTON_A, [i](brls::View*) {
             char marker[64];
             std::snprintf(marker, sizeof(marker), "TRENDING CARD SELECTED %zu", i);
             log_stage(marker);
             return true;
         });
-
         row->addView(card);
     }
-
     log_stage("TRENDING UI ATTACHED");
 }
 
@@ -573,46 +520,38 @@ int main(int argc, char* argv[])
 {
     (void)argc;
     (void)argv;
-
     fsdevMountSdmc();
     ensure_app_dirs();
     g_log = std::fopen(kLogPath, "w");
     log_stage("entered main");
     brls::Logger::setLogLevel(brls::LogLevel::DEBUG);
     log_stage("logger configured");
-
     Result romfsRc = romfsInit();
     log_stage(R_SUCCEEDED(romfsRc) ? "romfsInit OK" : "romfsInit FAILED");
     log_stage("closing Saikou log before Borealis init");
     if (g_log) { std::fclose(g_log); g_log = nullptr; }
-
     if (!brls::Application::init()) return EXIT_FAILURE;
     log_stage("Application::init OK");
     brls::Application::createWindow("Saikou Switch");
     log_stage("Borealis window created");
     brls::Application::setGlobalQuit(false);
-
     log_stage("BEFORE HomeActivity construction");
     HomeActivity* activity = new HomeActivity();
     log_stage("AFTER HomeActivity construction");
-    log_stage("BEFORE pushActivity(home) WITH FOCUS BYPASS");
+    log_stage("BEFORE pushActivity(home) WITH NORMAL FOCUS");
     brls::Application::pushActivity(activity);
-    log_stage("AFTER pushActivity(home) WITH FOCUS BYPASS");
-
+    log_stage("AFTER pushActivity(home) WITH NORMAL FOCUS");
     brls::View* root = activity->getContentView();
     log_stage(root ? "ROOT VIEW VALID AFTER PUSH" : "ROOT VIEW NULL AFTER PUSH");
     brls::TabFrame* tabFrame = dynamic_cast<brls::TabFrame*>(root);
     log_stage(tabFrame ? "TABFRAME PUBLIC API TARGET VALID" : "TABFRAME PUBLIC API TARGET NULL");
-
     if (tabFrame)
     {
         const char* homePath = "romfs:/xml/activity/home.xml";
         log_stage("BEFORE HOME RESOURCE PREFLIGHT");
         FILE* homeFile = std::fopen(homePath, "rb");
         if (!homeFile)
-        {
             log_stage("HOME RESOURCE PREFLIGHT OPEN FAILED");
-        }
         else
         {
             log_stage("HOME RESOURCE PREFLIGHT OPEN OK");
@@ -630,9 +569,7 @@ int main(int argc, char* argv[])
                 size_t readSize = std::fread(xml.data(), 1, xml.size(), homeFile);
                 std::fclose(homeFile);
                 if (readSize != xml.size())
-                {
                     log_stage("HOME RESOURCE PREFLIGHT READ FAILED");
-                }
                 else
                 {
                     log_stage("HOME RESOURCE PREFLIGHT READ OK");
@@ -644,10 +581,12 @@ int main(int argc, char* argv[])
                         log_stage("BEFORE API PROBE");
                         ApiResult api = run_api_probe();
                         log_stage("AFTER API PROBE");
-
                         brls::Box* homeBox = dynamic_cast<brls::Box*>(homeContent);
                         if (homeBox)
                         {
+                            // Keep the whole content panel as a valid fallback focus target
+                            // when the network is unavailable and no cards exist.
+                            homeBox->setFocusable(true);
                             brls::Label* status = new brls::Label();
                             status->setText(api.status);
                             status->setFontSize(16);
@@ -656,10 +595,7 @@ int main(int argc, char* argv[])
                             if (!api.response.empty()) render_trending(homeBox, api.response);
                         }
                         else
-                        {
                             log_stage("HOME ROOT IS NOT BOX");
-                        }
-
                         log_stage("BEFORE PUBLIC TABFRAME CONTENT SET");
                         tabFrame->setTabContent(homeContent);
                         log_stage("AFTER PUBLIC TABFRAME CONTENT SET");
@@ -669,7 +605,6 @@ int main(int argc, char* argv[])
             }
         }
     }
-
     log_stage("AFTER HOME CONTENT ATTACHMENT PATH");
     int loopCount = 0;
     while (brls::Application::mainLoop())
