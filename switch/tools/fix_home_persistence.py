@@ -46,12 +46,19 @@ if source.count(marker) != 1:
 source = source.replace(marker, replacement, 1)
 
 # Guard the existing deferred refresh helper against an activation callback
-# firing while setTabContent() replaces the Home content.
+# firing while setTabContent() replaces the Home content. Clear the guard on
+# every early failure path so a later Home activation can retry normally.
 marker = '    log_stage("CONTROLLER REFRESH START");\n'
 replacement = marker + '    g_homeRefreshInProgress = true;\n'
 if source.count(marker) != 1:
     raise SystemExit("Could not locate refresh helper start")
 source = source.replace(marker, replacement, 1)
+
+old = '''    if (!homeContent)\n    {\n        log_stage("CONTROLLER REFRESH XML FAILED");\n        return;\n    }'''
+new = '''    if (!homeContent)\n    {\n        log_stage("CONTROLLER REFRESH XML FAILED");\n        g_homeRefreshInProgress = false;\n        return;\n    }'''
+if source.count(old) != 1:
+    raise SystemExit("Could not locate Home refresh XML failure path")
+source = source.replace(old, new, 1)
 
 marker = '    log_stage("AFTER REFRESH TABFRAME CONTENT SET");\n'
 replacement = marker + '    g_homeRefreshInProgress = false;\n    g_homeContentInstalled = true;\n'
