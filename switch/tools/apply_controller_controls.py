@@ -29,13 +29,16 @@ if '"Refresh", brls::BUTTON_X' not in source:
         raise SystemExit("Could not locate TrendingCarouselViewport::registerCardAction")
     source = source.replace(marker, addition, 1)
 
-# Install one public TabFrame-level Back action. It catches B after the
-# focused content has had a chance to handle it, moves focus to the sidebar,
-# and deliberately returns false while the sidebar itself is focused so the
-# normal global Back/Quit behavior remains available there.
+# Install one public TabFrame-level Back action. It must only handle B while
+# focus is in the active content region. If B is pressed on any sidebar item,
+# return false so the normal global Back/Quit behavior remains available.
+# For content, use the content root's existing LEFT custom-focus route. That
+# route was installed by TabFrame itself and points to the exact sidebar item
+# for the active tab (Home/Search/Library/Settings), rather than always using
+# the sidebar's default Home item.
 if '"Back to sidebar", brls::BUTTON_B' not in source:
     marker = '    if (tabFrame)\n    {\n'
-    addition = '''    if (tabFrame)\n    {\n        brls::View* sidebar = tabFrame->getView("brls/tab_frame/sidebar");\n        if (sidebar)\n        {\n            tabFrame->registerAction("Back to sidebar", brls::BUTTON_B, [sidebar](brls::View*) {\n                brls::View* current = brls::Application::getCurrentFocus();\n                brls::View* sidebarFocus = sidebar->getDefaultFocus();\n                if (!sidebarFocus || current == sidebarFocus)\n                    return false;\n                brls::Application::giveFocus(sidebarFocus);\n                return true;\n            });\n            log_stage("TABFRAME BACK-TO-SIDEBAR ACTION REGISTERED");\n        }\n        else\n            log_stage("TABFRAME SIDEBAR LOOKUP FAILED");\n'''
+    addition = '''    if (tabFrame)\n    {\n        brls::View* sidebar = tabFrame->getView("brls/tab_frame/sidebar");\n        if (sidebar)\n        {\n            tabFrame->registerAction("Back to sidebar", brls::BUTTON_B, [tabFrame, sidebar](brls::View*) {\n                brls::View* current = brls::Application::getCurrentFocus();\n                if (!current)\n                    return false;\n\n                // B on the sidebar must not jump to Home. Let Borealis'\n                // normal global Back/Quit handling process it instead.\n                for (brls::View* node = current; node; node = node->getParent())\n                {\n                    if (node == sidebar)\n                        return false;\n                }\n\n                // Find the root of the currently focused content region.\n                // TabFrame -> content Box -> active tab content -> children.\n                // The active tab content is the node whose parent is the\n                // content Box and whose grandparent is this TabFrame.\n                brls::View* contentRoot = current;\n                while (contentRoot && contentRoot->getParent() &&\n                       contentRoot->getParent()->getParent() != tabFrame)\n                {\n                    contentRoot = contentRoot->getParent();\n                }\n\n                if (!contentRoot || !contentRoot->getParent() ||\n                    contentRoot->getParent()->getParent() != tabFrame)\n                    return false;\n\n                // TabFrame's normal creator path installs a LEFT custom route\n                // from this exact content root to its corresponding sidebar\n                // item. Reuse that public focus behavior instead of touching\n                // TabFrame's private active-tab state.\n                brls::View* sidebarTarget = contentRoot->getNextFocus(\n                    brls::FocusDirection::LEFT, contentRoot);\n                if (!sidebarTarget)\n                    return false;\n\n                brls::Application::giveFocus(sidebarTarget);\n                return true;\n            });\n            log_stage("TABFRAME BACK-TO-SIDEBAR ACTION REGISTERED");\n        }\n        else\n            log_stage("TABFRAME SIDEBAR LOOKUP FAILED");\n'''
     if source.count(marker) != 1:
         raise SystemExit("Could not locate TabFrame content block")
     source = source.replace(marker, addition, 1)
@@ -128,4 +131,4 @@ if "if (g_refreshRequested)" not in source:
     source = source.replace(marker, replacement, 1)
 
 path.write_text(source)
-print("Controller controls patch applied with native sidebar focus and tab-content Back routing")
+print("Controller controls patch applied with tab-aware Back routing")
