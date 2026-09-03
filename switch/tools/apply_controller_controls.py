@@ -29,6 +29,17 @@ if '"Refresh", brls::BUTTON_X' not in source:
         raise SystemExit("Could not locate TrendingCarouselViewport::registerCardAction")
     source = source.replace(marker, addition, 1)
 
+# Install one public TabFrame-level Back action. It catches B after the
+# focused content has had a chance to handle it, moves focus to the sidebar,
+# and deliberately returns false while the sidebar itself is focused so the
+# normal global Back/Quit behavior remains available there.
+if '"Back to sidebar", brls::BUTTON_B' not in source:
+    marker = '    if (tabFrame)\n    {\n'
+    addition = '''    if (tabFrame)\n    {\n        brls::View* sidebar = tabFrame->getView("brls/tab_frame/sidebar");\n        if (sidebar)\n        {\n            tabFrame->registerAction("Back to sidebar", brls::BUTTON_B, [sidebar](brls::View*) {\n                brls::View* current = brls::Application::getCurrentFocus();\n                brls::View* sidebarFocus = sidebar->getDefaultFocus();\n                if (!sidebarFocus || current == sidebarFocus)\n                    return false;\n                brls::Application::giveFocus(sidebarFocus);\n                return true;\n            });\n            log_stage("TABFRAME BACK-TO-SIDEBAR ACTION REGISTERED");\n        }\n        else\n            log_stage("TABFRAME SIDEBAR LOOKUP FAILED");\n'''
+    if source.count(marker) != 1:
+        raise SystemExit("Could not locate TabFrame content block")
+    source = source.replace(marker, addition, 1)
+
 # Insert a deferred refresh helper. The action only flips a flag; the actual
 # content replacement happens in the main-loop body after input processing,
 # avoiding deletion of the currently focused view during its action callback.
