@@ -6,13 +6,11 @@ xml_path = Path("switch/romfs/xml/activity/main.xml")
 source = source_path.read_text()
 xml = xml_path.read_text()
 
-# The pinned Borealis source exposes Dropdown through borealis.hpp. Avoid a
-# direct dropdown.hpp include because this checkout's include tree does not
-# install that header at that path.
+# The pinned Borealis source exposes Dropdown through the umbrella borealis.hpp
+# include. Keep the known-good selector implementation and only replace the
+# three-button selector with a single row that opens the native dropdown.
 source = source.replace('#include <borealis/dropdown.hpp>\n', '', 1)
 
-# Replace the selector helper with the dropdown implementation while keeping
-# the known-good #163 active-tab binding and LEFT navigation behavior.
 start = source.find('static void bind_api_settings_actions(brls::TabFrame* tabFrame)')
 if start == -1:
     raise SystemExit('Could not locate API settings binder')
@@ -95,7 +93,7 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
         return true;
     });
 
-    // Preserve the working navigation fix from #163-derived builds.
+    // Keep the working LEFT behaviour from the known-good selector build.
     if (g_activeSidebarItem)
         selector->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
 
@@ -106,7 +104,6 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
 '''
 source = source[:start] + helper + source[end:]
 
-# One Settings row opens the native Borealis dropdown.
 old_settings = '''    <brls:Tab label="Settings">
         <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
@@ -125,6 +122,7 @@ if old_settings in xml:
     xml = xml.replace(old_settings, new_settings, 1)
 elif 'id="api-source-selector"' not in xml:
     raise SystemExit('Could not locate Settings XML block')
+
 xml_path.write_text(xml)
 source_path.write_text(source)
 print('API Source dropdown patch applied')
