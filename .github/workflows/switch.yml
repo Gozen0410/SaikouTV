@@ -116,6 +116,14 @@ jobs:
           grep -q 'g_homeSidebarItem' switch/source/main.cpp
           grep -q 'g_homeContentInstalled' switch/source/main.cpp
           grep -q 'active == g_homeSidebarItem' switch/source/main.cpp
+      - name: Add API source selector
+        run: |
+          set -eux
+          python3 -m py_compile switch/tools/apply_api_selector.py
+          python3 switch/tools/apply_api_selector.py
+          grep -q 'g_apiSource' switch/source/main.cpp
+          grep -q 'AnimePahe' switch/source/main.cpp
+          grep -q 'Gogoanime' switch/source/main.cpp
       - name: Build ELF
         working-directory: switch
         run: |
