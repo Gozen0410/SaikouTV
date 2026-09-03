@@ -30,15 +30,25 @@ if old_settings not in xml:
 xml = xml.replace(old_settings, new_settings, 1)
 xml_path.write_text(xml)
 
-# Dedicated API source Activity. This uses only controls already present in
-# the pinned Borealis build (Activity, Box, Label, Button).
+# Dedicated API source Activity. Each provider gets its own wrapper so the
+# Button focus frame has real layout space and cannot visually touch the next
+# provider. The wrappers use only the pinned Borealis Box/Label/Button controls.
 api_xml_path.write_text('''<brls:Box width="auto" height="auto" axis="column" paddingTop="50" paddingLeft="70" paddingRight="70">
     <brls:Label width="auto" height="auto" text="API Source" fontSize="40" />
     <brls:Label id="api-source-selected" width="auto" height="auto" text="Selected: Miruro" marginTop="18" />
     <brls:Label width="auto" height="auto" text="Choose the anime metadata provider" marginTop="10" />
-    <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="28" />
-    <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" marginTop="18" />
-    <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" marginTop="18" />
+
+    <brls:Box width="auto" height="auto" axis="column" marginTop="28" paddingBottom="14">
+        <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" />
+    </brls:Box>
+
+    <brls:Box width="auto" height="auto" axis="column" paddingTop="14" paddingBottom="14">
+        <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" />
+    </brls:Box>
+
+    <brls:Box width="auto" height="auto" axis="column" paddingTop="14" paddingBottom="14">
+        <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />
+    </brls:Box>
 </brls:Box>
 ''')
 
