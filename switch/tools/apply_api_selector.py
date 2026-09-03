@@ -21,6 +21,17 @@ static brls::View* g_boundSettingsTab = nullptr;
         raise SystemExit("Could not locate Home persistence globals")
     source = source.replace(marker, addition, 1)
 
+# The Settings tab is XML-created. Expose the active tab through the pinned
+# Borealis header at build time so main.cpp never depends on private members.
+header = borealis_header.read_text()
+if "View* getActiveTab() const" not in header:
+    marker = '    void addSeparator();\n'
+    addition = marker + '    View* getActiveTab() const { return this->activeTab; }\n'
+    if header.count(marker) != 1:
+        raise SystemExit("Could not locate TabFrame addSeparator declaration")
+    header = header.replace(marker, addition, 1)
+    borealis_header.write_text(header)
+
 # Persistent provider selection helpers.
 if "static const char* api_source_name" not in source:
     marker = 'static brls::View* load_home_content_from_xml()\n'
@@ -79,11 +90,6 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     if (!current || !miruro || !animepahe || !gogoanime)
         return;
 
-    // Do not install custom LEFT routes here. The pinned TabFrame owns the
-    // sidebar/content focus transition, and changing routes on the Settings
-    // content tree can invalidate focus while the tab is being activated.
-    // Keep Settings navigation on Borealis' normal focus graph for now.
-
     miruro->registerClickAction([current](brls::View*) {
         g_apiSource = 0;
         current->setText("Anime API: Miruro");
@@ -101,7 +107,6 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     gogoanime->registerClickAction([current](brls::View*) {
         g_apiSource = 2;
         current->setText("Anime API: Gogoanime");
-        current->setText("Anime API: Gogoanime");
         save_api_source();
         return true;
     });
@@ -116,9 +121,6 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
         raise SystemExit("Could not locate Home XML helper boundary")
     source = source.replace(marker, helper + marker, 1)
 
-# Replace the placeholder Settings body with a static XML selector. IDs let
-# the runtime bind directly through View::getView(), which is supported by the
-# pinned Borealis version and avoids requiring a public child-vector API.
 old_settings = '''    <brls:Tab label="Settings">
         <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
@@ -140,12 +142,10 @@ elif 'id="api-source-miruro"' not in xml or 'id="api-source-gogoanime"' not in x
     raise SystemExit("Could not locate Settings XML block")
 xml_path.write_text(xml)
 
-# Bind the Settings controls after the XML-created active tab exists. No
-# Settings content replacement occurs here.
+# Bind the Settings controls after the XML-created active tab exists.
 if "bind_api_settings_actions(tabFrame);" not in source:
     marker = '    while (brls::Application::mainLoop())\n    {\n'
-    addition = marker + '''        bind_api_settings_actions(tabFrame);
-'''
+    addition = marker + '        bind_api_settings_actions(tabFrame);\n'
     if source.count(marker) != 1:
         raise SystemExit("Could not locate main loop")
     source = source.replace(marker, addition, 1)
@@ -156,6 +156,5 @@ if 'load_api_source();' not in source:
         raise SystemExit("Could not locate app directory initialization")
     source = source.replace(marker, marker + '    load_api_source();\n', 1)
 
-path = source_path
-path.write_text(source)
-print("Removed unsafe Settings custom focus routing; kept selector and spacing")
+source_path.write_text(source)
+print("Restored workflow Borealis accessor patch")
