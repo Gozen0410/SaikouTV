@@ -6,15 +6,10 @@ source = path.read_text()
 
 if "g_activeSidebarItem" not in source:
     marker = 'static FILE* g_log = nullptr;\n'
-    addition = marker + 'static brls::View* g_activeSidebarItem = nullptr;\nstatic brls::View* g_homeContentView = nullptr;\nstatic bool g_refreshRequested = false;\n'
+    addition = marker + 'static brls::View* g_activeSidebarItem = nullptr;\nstatic bool g_refreshRequested = false;\n'
     if source.count(marker) != 1:
         raise SystemExit("Could not locate log global")
     source = source.replace(marker, addition, 1)
-elif "g_homeContentView" not in source:
-    marker = 'static bool g_refreshRequested = false;\n'
-    if source.count(marker) != 1:
-        raise SystemExit("Could not locate refresh global")
-    source = source.replace(marker, marker + 'static brls::View* g_homeContentView = nullptr;\n', 1)
 
 source = source.replace('            homeBox->setFocusable(true);\n', '', 1)
 source = source.replace('        homeBox->setFocusable(true);\n', '', 1)
@@ -130,7 +125,6 @@ static void refresh_home_content(brls::TabFrame* tabFrame)
         if (!api.response.empty()) render_trending(homeBox, api.response);
     }
     tabFrame->setTabContent(homeContent);
-    g_homeContentView = homeContent;
     if (g_homeSidebarItem)
     {
         brls::View* entry = homeContent->getDefaultFocus();
@@ -160,13 +154,14 @@ if "HOME FOCUS REFRESH CHECK INSTALLED" not in source:
     marker = '    while (brls::Application::mainLoop())\n    {\n        ++loopCount;\n'
     replacement = '''    while (brls::Application::mainLoop())
     {
-        if (g_apiSourceRefreshPending && focus_is_inside(g_homeContentView))
+        brls::View* activeHomeTab = tabFrame ? tabFrame->getActiveTab() : nullptr;
+        if (g_apiSourceRefreshPending && focus_is_inside(activeHomeTab))
         {
             g_apiSourceRefreshPending = false;
             g_refreshRequested = true;
             log_stage("HOME FOCUS ACTIVE - CONSUMING API SOURCE REFRESH");
         }
-        if (g_refreshRequested && focus_is_inside(g_homeContentView))
+        if (g_refreshRequested && focus_is_inside(activeHomeTab))
         {
             g_refreshRequested = false;
             refresh_home_content(tabFrame);
@@ -177,11 +172,11 @@ if "HOME FOCUS REFRESH CHECK INSTALLED" not in source:
     if source.count(marker) != 1:
         raise SystemExit("Could not locate main loop")
     source = source.replace(marker, replacement, 1)
-    source = source.replace('    log_stage("AFTER HOME CONTENT ATTACHMENT PATH");\n', '    g_homeContentView = tabFrame ? tabFrame->getTabContent() : nullptr;\n    log_stage("HOME FOCUS REFRESH CHECK INSTALLED");\n    log_stage("AFTER HOME CONTENT ATTACHMENT PATH");\n', 1)
+    source = source.replace('    log_stage("AFTER HOME CONTENT ATTACHMENT PATH");\n', '    log_stage("HOME FOCUS REFRESH CHECK INSTALLED");\n    log_stage("AFTER HOME CONTENT ATTACHMENT PATH");\n', 1)
 
-# The workflow's TabFrame patch currently routes sidebar RIGHT to the content
-# root. Replace that with the content's default focus when available, so Home
-# enters the first real card and Settings enters its API Source button.
+# The workflow's TabFrame patch routes sidebar RIGHT to the content root.
+# Prefer the content's default focus when available, so Home enters its first
+# real card and Settings enters its API Source button.
 borealis_tab = Path("switch/borealis/library/lib/views/tab_frame.cpp")
 if borealis_tab.exists():
     tab_source = borealis_tab.read_text()
