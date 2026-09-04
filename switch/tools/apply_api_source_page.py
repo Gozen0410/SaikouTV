@@ -33,40 +33,61 @@ replacement = r'''class ApiSourceActivity : public brls::Activity
 public:
     brls::View* createContentView() override
     {
-        brls::View* root = brls::View::createFromXMLResource("activity/api_source.xml");
-        if (!root)
-            return nullptr;
+        brls::Box* root = new brls::Box(brls::Axis::COLUMN);
+        root->setWidth(900);
+        root->setGrow(1.0f);
+        root->setPadding(50, 70, 40, 70);
 
-        brls::Label* current = dynamic_cast<brls::Label*>(root->getView("api-source-current"));
-        brls::Button* miruro = dynamic_cast<brls::Button*>(root->getView("api-source-miruro"));
-        brls::Button* animepahe = dynamic_cast<brls::Button*>(root->getView("api-source-animepahe"));
-        brls::Button* gogoanime = dynamic_cast<brls::Button*>(root->getView("api-source-gogoanime"));
+        brls::Label* heading = new brls::Label();
+        heading->setText("API Source");
+        heading->setFontSize(40);
+        heading->setFocusable(false);
+        root->addView(heading);
 
-        if (current)
-            current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+        brls::Label* selected = new brls::Label();
+        selected->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+        selected->setFontSize(20);
+        selected->setMargins(0, 16, 0, 0);
+        selected->setFocusable(false);
+        root->addView(selected);
 
-        auto bindProvider = [current](brls::Button* button, int sourceId) {
-            if (!button) return;
-            button->registerClickAction([current, sourceId](brls::View*) {
+        brls::Label* hint = new brls::Label();
+        hint->setText("Choose the anime metadata provider");
+        hint->setFontSize(15);
+        hint->setMargins(0, 8, 0, 0);
+        hint->setFocusable(false);
+        root->addView(hint);
+
+        auto makeProvider = [root, selected](const char* name, int sourceId, float topMargin) {
+            brls::Button* button = new brls::Button();
+            button->setText(name);
+            button->setWidth(760);
+            button->setMargins(0, topMargin, 0, 0);
+            button->registerClickAction([selected, sourceId](brls::View*) {
                 g_apiSource = sourceId;
                 save_api_source();
-                if (current)
-                    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+                selected->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
                 log_stage("API SOURCE SELECTION SAVED");
                 return true;
             });
+            root->addView(button);
+            return button;
         };
 
-        bindProvider(miruro, 0);
-        bindProvider(animepahe, 1);
-        bindProvider(gogoanime, 2);
+        makeProvider("Miruro", 0, 28);
+        makeProvider("AnimePahe", 1, 18);
+        makeProvider("Gogoanime", 2, 18);
+
+        // pushActivity() deliberately starts a new activity at alpha 0 when
+        // transitioning from an opaque activity. Mark the new content hidden
+        // so its subsequent show() call actually runs the fade-in animation.
+        root->hide([] {}, false, 0);
 
         root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
             log_stage("API SOURCE ACTIVITY BACK");
-            brls::Application::popActivity(brls::TransitionAnimation::SLIDE_RIGHT);
+            brls::Application::popActivity(brls::TransitionAnimation::FADE);
             return true;
         });
-
         return root;
     }
 };
@@ -101,4 +122,4 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
 
 '''
 source_path.write_text(source[:start] + replacement + source[end:])
-print("API source Activity rewritten with fade push transition")
+print("API source Activity uses explicit hidden-to-show lifecycle")
