@@ -29,33 +29,21 @@ if "g_apiSourceRefreshPending = false;" not in source:
     )
     replacement = '''item->getActiveEvent()->subscribe([](brls::View* active) {
                                     g_activeSidebarItem = active;
-                                    if (g_homeContentInstalled && !g_homeRefreshInProgress && active == g_homeSidebarItem)
-                                    {
-                                        if (g_apiSourceRefreshPending)
-                                        {
-                                            g_apiSourceRefreshPending = false;
-                                            g_refreshRequested = true;
-                                            log_stage("HOME ACTIVE - CONSUMING API SOURCE REFRESH");
-                                        }
-                                        else
-                                            g_refreshRequested = true;
-                                    }
                                 });'''
+    # Keep the base subscription simple; activation-aware refresh is handled
+    # centrally by the main loop using the actual Home content focus tree.
     source, count = pattern.subn(replacement, source, count=1)
     if count != 1:
         raise SystemExit("Could not locate sidebar active-event subscription")
 
-# Mark the dynamically installed Home content and make its sidebar RIGHT route
-# target the first real focusable child rather than the deleted placeholder.
-if "g_homeContentInstalled = true;" not in source:
+# Mark the dynamically installed Home content and keep a direct pointer to it.
+# Do not use a TabFrame getter: this Borealis revision intentionally exposes
+# setTabContent() but has no public getTabContent().
+if "g_homeContentView = homeContent;" not in source:
     marker = '                        homeContent = nullptr;\n'
     if source.count(marker) != 1:
         raise SystemExit("Could not locate initial Home ownership handoff")
-    addition = '''                        if (g_homeSidebarItem)
-                        {
-                            brls::View* entryFocus = homeContent->getDefaultFocus();
-                            g_homeSidebarItem->setCustomNavigationRoute(brls::FocusDirection::RIGHT, entryFocus ? entryFocus : homeContent);
-                        }
+    addition = '''                        g_homeContentView = homeContent;
                         g_homeContentInstalled = true;
                         homeContent = nullptr;
 '''
@@ -67,40 +55,12 @@ if 'if (api.response.empty()) homeBox->setFocusable(true);' not in source:
     if source.count(marker) >= 1:
         source = source.replace(marker, marker + '                            if (api.response.empty()) homeBox->setFocusable(true);\n', 1)
 
-# The refresh helper already replaces Home safely. Add the same focus route and
-# guard around its completion, but do not depend on a specific failure block.
-if 'g_homeRefreshInProgress = true;' not in source:
-    marker = '    log_stage("CONTROLLER REFRESH START");\n'
-    if source.count(marker) != 1:
-        raise SystemExit("Could not locate Home refresh start")
-    source = source.replace(marker, marker + '    g_homeRefreshInProgress = true;\n', 1)
+# The refresh helper replaces Home safely. The controller owns the in-progress
+# guard and updates g_homeContentView after a successful replacement.
 
-# Ensure every refresh failure returns with the guard cleared.
-source = source.replace(
-    '    if (!homeContent) return nullptr;\n',
-    '    if (!homeContent) { g_homeRefreshInProgress = false; return; }\n',
-    1
-)
-
-# Add the route update immediately after the refresh content replacement.
-marker = '    tabFrame->setTabContent(homeContent);\n'
-if source.count(marker) >= 1 and 'CONTROLLER REFRESH START' in source:
-    refresh_block_start = source.find('static void refresh_home_content')
-    route = '''    if (g_homeSidebarItem)
-    {
-        brls::View* entryFocus = homeContent->getDefaultFocus();
-        g_homeSidebarItem->setCustomNavigationRoute(brls::FocusDirection::RIGHT, entryFocus ? entryFocus : homeContent);
-    }
-'''
-    pos = source.find(marker, refresh_block_start)
-    if pos >= 0 and source[pos:pos + len(marker) + len(route)].find('g_homeSidebarItem->setCustomNavigationRoute') < 0:
-        source = source[:pos + len(marker)] + route + source[pos + len(marker):]
-
-if 'g_homeRefreshInProgress = false;' not in source:
-    marker = '    log_stage("AFTER REFRESH TABFRAME CONTENT SET");\n'
-    if source.count(marker) != 1:
-        raise SystemExit("Could not locate Home refresh completion")
-    source = source.replace(marker, marker + '    g_homeRefreshInProgress = false;\n    g_homeContentInstalled = true;\n', 1)
+# Remove the old experimental TabFrame getter if an earlier generator pass left it behind.
+source = source.replace('    g_homeContentView = tabFrame ? tabFrame->getTabContent() : nullptr;\n', '', 1)
+source = source.replace('    log_stage("HOME FOCUS REFRESH CHECK INSTALLED");\n', '', 1)
 
 path.write_text(source)
-print("Home refresh now consumes pending API changes only when Home becomes active")
+print("Home persistence now tracks the installed Home view directly and leaves refresh activation to the main loop")
