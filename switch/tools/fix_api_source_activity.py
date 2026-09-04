@@ -11,14 +11,40 @@ if include not in source:
         raise SystemExit("Could not locate main.cpp include boundary")
     source = source[:first_include_end + 1] + include + source[first_include_end + 1:]
 
-old_name = '''static const char* api_source_name(int source)\n{\n    switch (source)\n    {\n        case 1: return "AnimePahe";\n        case 2: return "Gogoanime";\n        default: return "Miruro";\n    }\n}\n\n'''
+old_name = '''static const char* api_source_name(int source)
+{
+    switch (source)
+    {
+        case 1: return "AnimePahe";
+        case 2: return "Gogoanime";
+        default: return "Miruro";
+    }
+}
+
+'''
 if old_name in source:
     source = source.replace(old_name, '', 1)
 source = source.replace('value >= 0 && value <= 2', 'api_source_is_valid(value)', 1)
 
 if "static void clear_api_cache()" not in source:
     marker = 'class ApiSourceActivity : public brls::Activity\n'
-    helper = '''static void clear_api_cache()\n{\n    int removed = 0;\n    for (int i = 0; i < 6; ++i)\n    {\n        char path[128];\n        std::snprintf(path, sizeof(path), "%s/trending_%d.jpg", kCacheDir, i);\n        if (std::remove(path) == 0)\n            ++removed;\n    }\n\n    char marker[96];\n    std::snprintf(marker, sizeof(marker), "API CACHE CLEARED FILES %d", removed);\n    log_stage(marker);\n}\n\n'''
+    helper = '''static void clear_api_cache()
+{
+    int removed = 0;
+    for (int i = 0; i < 6; ++i)
+    {
+        char path[128];
+        std::snprintf(path, sizeof(path), "%s/trending_%d.jpg", kCacheDir, i);
+        if (std::remove(path) == 0)
+            ++removed;
+    }
+
+    char marker[96];
+    std::snprintf(marker, sizeof(marker), "API CACHE CLEARED FILES %d", removed);
+    log_stage(marker);
+}
+
+'''
     if source.count(marker) != 1:
         raise SystemExit("Could not locate ApiSourceActivity boundary")
     source = source.replace(marker, helper + marker, 1)
@@ -30,9 +56,85 @@ end = source.find("static void bind_api_settings_actions", start)
 if end < 0:
     raise SystemExit("Could not locate API settings binder")
 
-xml_path.write_text('''<brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">\n    <brls:Label width="auto" height="auto" text="API Source" fontSize="36" />\n    <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="16" />\n    <brls:Label width="auto" height="auto" text="Choose the anime metadata provider" marginTop="8" />\n</brls:Box>''')
+xml_path.write_text('''<brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
+    <brls:Label width="auto" height="auto" text="API Source" fontSize="36" />
+    <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="16" />
+    <brls:Label width="auto" height="auto" text="Choose the anime metadata provider" marginTop="8" />
+</brls:Box>''')
 
-replacement = '''class ApiSourceActivity : public brls::Activity\n{\npublic:\n    brls::View* getDefaultFocus() override\n    {\n        return defaultFocus;\n    }\n\n    brls::View* createContentView() override\n    {\n        brls::View* rootView = brls::View::createFromXMLResource("activity/api_source.xml");\n        brls::Box* root = dynamic_cast<brls::Box*>(rootView);\n        if (!root)\n        {\n            delete rootView;\n            return nullptr;\n        }\n\n        brls::Label* current = dynamic_cast<brls::Label*>(root->getView("api-source-current"));\n        if (current)\n            current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));\n\n        brls::Button* firstButton = nullptr;\n        for (std::size_t i = 0; i < kApiSourceCount; ++i)\n        {\n            const ApiSourceInfo& provider = kApiSources[i];\n            if (!provider.enabled)\n                continue;\n\n            brls::Button* button = new brls::Button();\n            button->setText(provider.name);\n            button->setWidth(760);\n            button->setMargins(0, firstButton ? 24 : 28, 0, 0);\n            const int sourceId = static_cast<int>(provider.id);\n            button->registerClickAction([current, sourceId](brls::View*) {\n                if (g_apiSource == sourceId)\n                {\n                    log_stage("API SOURCE SELECTION UNCHANGED");\n                    return true;\n                }\n\n                g_apiSource = sourceId;\n                clear_api_cache();\n                save_api_source();\n                if (current)\n                    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));\n                // Mark the provider change as pending. Do not touch Home while\n                // this Activity is open or while Settings is the active tab.\n                g_apiSourceRefreshPending = true;\n                log_stage("API SOURCE CHANGED - CACHE CLEARED - REFRESH PENDING UNTIL HOME");\n                return true;\n            });\n            root->addView(button);\n            if (!firstButton)\n                firstButton = button;\n        }\n        defaultFocus = firstButton;\n\n        root->hide([] {}, false, 0);\n\n        root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {\n            log_stage("API SOURCE ACTIVITY BACK");\n            brls::Application::popActivity(brls::TransitionAnimation::FADE);\n            return true;\n        });\n\n        return root;\n    }\n\nprivate:\n    brls::View* defaultFocus = nullptr;\n};\n\n'''
+replacement = '''class ApiSourceActivity : public brls::Activity
+{
+public:
+    brls::View* getDefaultFocus() override
+    {
+        return defaultFocus;
+    }
+
+    brls::View* createContentView() override
+    {
+        brls::View* rootView = brls::View::createFromXMLResource("activity/api_source.xml");
+        brls::Box* root = dynamic_cast<brls::Box*>(rootView);
+        if (!root)
+        {
+            delete rootView;
+            return nullptr;
+        }
+
+        brls::Label* current = dynamic_cast<brls::Label*>(root->getView("api-source-current"));
+        if (current)
+            current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+
+        brls::Button* firstButton = nullptr;
+        for (std::size_t i = 0; i < kApiSourceCount; ++i)
+        {
+            const ApiSourceInfo& provider = kApiSources[i];
+            if (!provider.enabled)
+                continue;
+
+            brls::Button* button = new brls::Button();
+            button->setText(provider.name);
+            button->setWidth(760);
+            button->setMargins(0, firstButton ? 24 : 28, 0, 0);
+            const int sourceId = static_cast<int>(provider.id);
+            button->registerClickAction([current, sourceId](brls::View*) {
+                if (g_apiSource == sourceId)
+                {
+                    log_stage("API SOURCE SELECTION UNCHANGED");
+                    return true;
+                }
+
+                g_apiSource = sourceId;
+                clear_api_cache();
+                save_api_source();
+                if (current)
+                    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+                g_apiSourceRefreshPending = true;
+                log_stage("API SOURCE CHANGED - CACHE CLEARED - REFRESH PENDING UNTIL HOME");
+                return true;
+            });
+            root->addView(button);
+            if (!firstButton)
+                firstButton = button;
+        }
+        defaultFocus = firstButton;
+
+        root->hide([] {}, false, 0);
+
+        root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
+            log_stage("API SOURCE ACTIVITY BACK");
+            brls::Application::popActivity(brls::TransitionAnimation::FADE);
+            return true;
+        });
+
+        return root;
+    }
+
+private:
+    brls::View* defaultFocus = nullptr;
+};
+
+'''
 source = source[:start] + replacement + source[end:]
+
 path.write_text(source)
 print("API source refresh now waits for Home to become the active sidebar tab")
