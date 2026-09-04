@@ -78,6 +78,15 @@ jobs:
           s = s.replace(old_creator, new_creator, 1)
           p.write_text(s)
           PY
+      - name: Fix Home tab lifecycle
+        working-directory: switch
+        run: |
+          set -eux
+          python3 -m py_compile tools/fix_home_tab_lifecycle.py
+          python3 tools/fix_home_tab_lifecycle.py
+          grep -q 'cachedHomeTab' borealis/library/include/borealis/views/tab_frame.hpp
+          grep -q 'void Box::detachView' borealis/library/lib/core/box.cpp
+          grep -q 'label == "Home"' borealis/library/lib/views/tab_frame.cpp
       - name: Apply Saikou trending carousel and controller navigation
         run: |
           set -eux
