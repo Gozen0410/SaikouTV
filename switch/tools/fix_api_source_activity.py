@@ -23,6 +23,11 @@ xml_path.write_text(r'''<brls:Box width="auto" height="auto" axis="column" paddi
 replacement = r'''class ApiSourceActivity : public brls::Activity
 {
 public:
+    brls::View* getDefaultFocus() override
+    {
+        return defaultFocus;
+    }
+
     brls::View* createContentView() override
     {
         brls::View* root = brls::View::createFromXMLResource("activity/api_source.xml");
@@ -53,6 +58,8 @@ public:
         bindProvider(animepahe, 1);
         bindProvider(gogoanime, 2);
 
+        defaultFocus = miruro;
+
         root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
             log_stage("API SOURCE ACTIVITY BACK");
             brls::Application::popActivity(brls::TransitionAnimation::FADE);
@@ -61,9 +68,12 @@ public:
 
         return root;
     }
+
+private:
+    brls::View* defaultFocus = nullptr;
 };
 
 '''
 
 path.write_text(source[:start] + replacement + source[end:])
-print("API source activity now uses themed XML content")
+print("API source activity now uses themed XML content with explicit initial focus")
