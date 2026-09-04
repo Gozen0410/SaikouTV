@@ -28,17 +28,19 @@ end = source.find("static brls::View* load_home_content_from_xml()", start)
 if end == -1:
     raise SystemExit("Could not locate API binder end anchor")
 
-replacement = r'''class ApiSourceView : public brls::Box
+replacement = r'''class ApiSourceActivity : public brls::Activity
 {
 public:
-    ApiSourceView()
+    brls::View* createContentView() override
     {
-        this->inflateFromXMLRes("xml/activity/api_source.xml");
+        brls::View* root = brls::View::createFromXMLResource("activity/api_source.xml");
+        if (!root)
+            return nullptr;
 
-        brls::Label* current = dynamic_cast<brls::Label*>(this->getView("api-source-current"));
-        brls::Button* miruro = dynamic_cast<brls::Button*>(this->getView("api-source-miruro"));
-        brls::Button* animepahe = dynamic_cast<brls::Button*>(this->getView("api-source-animepahe"));
-        brls::Button* gogoanime = dynamic_cast<brls::Button*>(this->getView("api-source-gogoanime"));
+        brls::Label* current = dynamic_cast<brls::Label*>(root->getView("api-source-current"));
+        brls::Button* miruro = dynamic_cast<brls::Button*>(root->getView("api-source-miruro"));
+        brls::Button* animepahe = dynamic_cast<brls::Button*>(root->getView("api-source-animepahe"));
+        brls::Button* gogoanime = dynamic_cast<brls::Button*>(root->getView("api-source-gogoanime"));
 
         if (current)
             current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
@@ -59,11 +61,13 @@ public:
         bindProvider(animepahe, 1);
         bindProvider(gogoanime, 2);
 
-        this->registerAction("Back", brls::BUTTON_B, [](brls::View* view) {
-            log_stage("API SOURCE VIEW BACK");
-            view->dismiss();
+        root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
+            log_stage("API SOURCE ACTIVITY BACK");
+            brls::Application::popActivity(brls::TransitionAnimation::SLIDE_RIGHT);
             return true;
         });
+
+        return root;
     }
 };
 
@@ -82,9 +86,9 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
         return;
 
     current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
-    openApiSource->registerClickAction([](brls::View* view) {
-        log_stage("API SOURCE VIEW OPEN");
-        view->present(new ApiSourceView());
+    openApiSource->registerClickAction([](brls::View*) {
+        log_stage("API SOURCE ACTIVITY OPEN");
+        brls::Application::pushActivity(new ApiSourceActivity(), brls::TransitionAnimation::SLIDE_LEFT);
         return true;
     });
 
@@ -97,4 +101,4 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
 
 '''
 source_path.write_text(source[:start] + replacement + source[end:])
-print("API source now uses a presented Borealis view instead of a stacked Activity")
+print("API source Activity rewritten programmatically")
