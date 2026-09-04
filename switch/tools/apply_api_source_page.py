@@ -1,18 +1,10 @@
 from pathlib import Path
-import re
 
 source_path = Path("switch/source/main.cpp")
 xml_path = Path("switch/romfs/xml/activity/main.xml")
-api_xml_path = Path("switch/romfs/xml/activity/api_source.xml")
-
 source = source_path.read_text()
 xml = xml_path.read_text()
 
-# The existing working selector patch is deliberately kept as the base. This
-# second-stage patch only changes its Settings presentation to an Activity
-# page, avoiding any new Borealis widgets or unsupported dependencies.
-
-# Replace the three provider buttons in Settings with one entry point.
 old_settings = '''        <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="API Source" fontSize="36" />
             <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="20" />
@@ -27,33 +19,8 @@ new_settings = '''        <brls:Box width="auto" height="auto" axis="column" pad
         </brls:Box>'''
 if old_settings not in xml:
     raise SystemExit("Could not locate working API selector Settings block")
-xml = xml.replace(old_settings, new_settings, 1)
-xml_path.write_text(xml)
+xml_path.write_text(xml.replace(old_settings, new_settings, 1))
 
-# Dedicated API source Activity. Each provider gets its own wrapper so the
-# Button focus frame has real layout space and cannot visually touch the next
-# provider. The wrappers use only the pinned Borealis Box/Label/Button controls.
-api_xml_path.write_text('''<brls:Box width="auto" height="auto" axis="column" paddingTop="50" paddingLeft="70" paddingRight="70">
-    <brls:Label width="auto" height="auto" text="API Source" fontSize="40" />
-    <brls:Label id="api-source-selected" width="auto" height="auto" text="Selected: Miruro" marginTop="18" />
-    <brls:Label width="auto" height="auto" text="Choose the anime metadata provider" marginTop="10" />
-
-    <brls:Box width="auto" height="auto" axis="column" marginTop="28" paddingBottom="14">
-        <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" />
-    </brls:Box>
-
-    <brls:Box width="auto" height="auto" axis="column" paddingTop="14" paddingBottom="14">
-        <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" />
-    </brls:Box>
-
-    <brls:Box width="auto" height="auto" axis="column" paddingTop="14" paddingBottom="14">
-        <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />
-    </brls:Box>
-</brls:Box>
-''')
-
-# Replace the existing selector binder with a small Settings entry-point
-# binder. The provider buttons are now owned by ApiSourceActivity.
 start = source.find("static void bind_api_settings_actions(brls::TabFrame* tabFrame)")
 if start == -1:
     raise SystemExit("Could not locate existing API settings binder")
@@ -61,43 +28,56 @@ end = source.find("static brls::View* load_home_content_from_xml()", start)
 if end == -1:
     raise SystemExit("Could not locate API binder end anchor")
 
-api_class = r'''class ApiSourceActivity : public brls::Activity
+replacement = r'''class ApiSourceActivity : public brls::Activity
 {
 public:
     brls::View* createContentView() override
     {
-        return brls::View::createFromXMLResource("activity/api_source.xml");
-    }
+        brls::Box* root = new brls::Box(brls::Axis::COLUMN);
+        root->setWidth(900);
+        root->setGrow(1.0f);
+        root->setPadding(50, 70, 40, 70);
 
-    void onContentAvailable() override
-    {
-        brls::Label* selected = dynamic_cast<brls::Label*>(getView("api-source-selected"));
-        brls::Button* miruro = dynamic_cast<brls::Button*>(getView("api-source-miruro"));
-        brls::Button* animepahe = dynamic_cast<brls::Button*>(getView("api-source-animepahe"));
-        brls::Button* gogoanime = dynamic_cast<brls::Button*>(getView("api-source-gogoanime"));
-        if (!selected || !miruro || !animepahe || !gogoanime)
-            return;
+        brls::Label* heading = new brls::Label();
+        heading->setText("API Source");
+        heading->setFontSize(40);
+        heading->setFocusable(false);
+        root->addView(heading);
 
-        auto update = [selected](int source) {
-            g_apiSource = source;
-            selected->setText(std::string("Selected: ") + api_source_name(g_apiSource));
-            save_api_source();
+        brls::Label* selected = new brls::Label();
+        selected->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+        selected->setFontSize(20);
+        selected->setMargins(0, 16, 0, 0);
+        selected->setFocusable(false);
+        root->addView(selected);
+
+        brls::Label* hint = new brls::Label();
+        hint->setText("Choose the anime metadata provider");
+        hint->setFontSize(15);
+        hint->setMargins(0, 8, 0, 0);
+        hint->setFocusable(false);
+        root->addView(hint);
+
+        auto makeProvider = [root, selected](const char* name, int source, float topMargin) {
+            brls::Button* button = new brls::Button();
+            button->setText(name);
+            button->setWidth(760);
+            button->setMargins(0, topMargin, 0, 0);
+            button->registerClickAction([selected, source](brls::View*) {
+                g_apiSource = source;
+                save_api_source();
+                selected->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+                log_stage("API SOURCE SELECTION SAVED");
+                return true;
+            });
+            root->addView(button);
+            return button;
         };
 
-        miruro->registerClickAction([update](brls::View*) {
-            update(0);
-            return true;
-        });
-        animepahe->registerClickAction([update](brls::View*) {
-            update(1);
-            return true;
-        });
-        gogoanime->registerClickAction([update](brls::View*) {
-            update(2);
-            return true;
-        });
-
-        selected->setText(std::string("Selected: ") + api_source_name(g_apiSource));
+        makeProvider("Miruro", 0, 28);
+        makeProvider("AnimePahe", 1, 18);
+        makeProvider("Gogoanime", 2, 18);
+        return root;
     }
 };
 
@@ -117,6 +97,7 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
 
     current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
     openApiSource->registerClickAction([](brls::View*) {
+        log_stage("API SOURCE ACTIVITY OPEN");
         brls::Application::pushActivity(new ApiSourceActivity(), brls::TransitionAnimation::SLIDE_LEFT);
         return true;
     });
@@ -129,6 +110,5 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
 }
 
 '''
-source = source[:start] + api_class + source[end:]
-source_path.write_text(source)
-print("API source Settings page patch applied")
+source_path.write_text(source[:start] + replacement + source[end:])
+print("API source Activity rewritten programmatically")
