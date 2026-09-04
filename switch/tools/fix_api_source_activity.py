@@ -25,25 +25,39 @@ replacement = r'''class ApiSourceActivity : public brls::Activity
 public:
     brls::View* createContentView() override
     {
+        log_stage("API SOURCE CREATE CONTENT START");
         brls::View* root = brls::View::createFromXMLResource("activity/api_source.xml");
         if (!root)
+        {
+            log_stage("API SOURCE XML RESOURCE FAILED");
             return nullptr;
+        }
+
+        // Activity roots are not children of a Box. Give the root an explicit
+        // full-window layout so Yoga cannot collapse an auto-sized root.
+        root->setDimensions(brls::Application::contentWidth, brls::Application::contentHeight);
+        root->setBackground(brls::ViewBackground::BACKDROP);
+        root->setAlpha(1.0f);
+        log_stage("API SOURCE XML RESOURCE LOADED");
 
         brls::Label* current = dynamic_cast<brls::Label*>(root->getView("api-source-current"));
         brls::Button* miruro = dynamic_cast<brls::Button*>(root->getView("api-source-miruro"));
         brls::Button* animepahe = dynamic_cast<brls::Button*>(root->getView("api-source-animepahe"));
         brls::Button* gogoanime = dynamic_cast<brls::Button*>(root->getView("api-source-gogoanime"));
 
-        if (current)
-            current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+        if (!current || !miruro || !animepahe || !gogoanime)
+        {
+            log_stage("API SOURCE XML VIEW LOOKUP FAILED");
+            return root;
+        }
+
+        current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
 
         auto bindProvider = [current](brls::Button* button, int sourceId) {
-            if (!button) return;
             button->registerClickAction([current, sourceId](brls::View*) {
                 g_apiSource = sourceId;
                 save_api_source();
-                if (current)
-                    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+                current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
                 log_stage("API SOURCE SELECTION SAVED");
                 return true;
             });
@@ -59,6 +73,7 @@ public:
             return true;
         });
 
+        log_stage("API SOURCE CONTENT READY");
         return root;
     }
 };
@@ -66,4 +81,4 @@ public:
 '''
 
 path.write_text(source[:start] + replacement + source[end:])
-print("API source activity now uses themed XML content")
+print("API source activity root is now explicitly sized to the Borealis window")
