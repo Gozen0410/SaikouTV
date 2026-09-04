@@ -53,6 +53,7 @@ public:
 
         this->registerAction("Back", brls::BUTTON_B, [](brls::View* view) {
             log_stage("API SOURCE VIEW BACK");
+            log_stage("API SOURCE ACTIVITY BACK");
             view->dismiss();
             return true;
         });
