@@ -137,7 +137,7 @@ jobs:
           set -eux
           python3 -m py_compile switch/tools/apply_api_source_page.py
           python3 switch/tools/apply_api_source_page.py
-          test -f switch/romfs/xml/activity/api_source.xml
+          test -f switch/romfs/xml/activity/main.xml
           grep -q 'ApiSourceActivity' switch/source/main.cpp
       - name: Build ELF
         working-directory: switch
