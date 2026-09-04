@@ -4,9 +4,9 @@ path = Path("switch/source/main.cpp")
 xml_path = Path("switch/romfs/xml/activity/api_source.xml")
 source = path.read_text()
 
-start = source.find("class ApiSourceView : public brls::Box")
+start = source.find("class ApiSourceActivity : public brls::Activity")
 if start < 0:
-    raise SystemExit("Could not locate ApiSourceView")
+    raise SystemExit("Could not locate ApiSourceActivity")
 end = source.find("static void bind_api_settings_actions", start)
 if end < 0:
     raise SystemExit("Could not locate API settings binder")
@@ -20,17 +20,19 @@ xml_path.write_text(r'''<brls:Box width="auto" height="auto" axis="column" paddi
     <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" marginTop="18" />
 </brls:Box>''')
 
-replacement = r'''class ApiSourceView : public brls::Box
+replacement = r'''class ApiSourceActivity : public brls::Activity
 {
 public:
-    ApiSourceView()
+    brls::View* createContentView() override
     {
-        this->inflateFromXMLRes("xml/activity/api_source.xml");
+        brls::View* root = brls::View::createFromXMLResource("activity/api_source.xml");
+        if (!root)
+            return nullptr;
 
-        brls::Label* current = dynamic_cast<brls::Label*>(this->getView("api-source-current"));
-        brls::Button* miruro = dynamic_cast<brls::Button*>(this->getView("api-source-miruro"));
-        brls::Button* animepahe = dynamic_cast<brls::Button*>(this->getView("api-source-animepahe"));
-        brls::Button* gogoanime = dynamic_cast<brls::Button*>(this->getView("api-source-gogoanime"));
+        brls::Label* current = dynamic_cast<brls::Label*>(root->getView("api-source-current"));
+        brls::Button* miruro = dynamic_cast<brls::Button*>(root->getView("api-source-miruro"));
+        brls::Button* animepahe = dynamic_cast<brls::Button*>(root->getView("api-source-animepahe"));
+        brls::Button* gogoanime = dynamic_cast<brls::Button*>(root->getView("api-source-gogoanime"));
 
         if (current)
             current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
@@ -51,44 +53,17 @@ public:
         bindProvider(animepahe, 1);
         bindProvider(gogoanime, 2);
 
-        this->registerAction("Back", brls::BUTTON_B, [](brls::View* view) {
-            log_stage("API SOURCE VIEW BACK");
+        root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
             log_stage("API SOURCE ACTIVITY BACK");
-            view->dismiss();
+            brls::Application::popActivity(brls::TransitionAnimation::SLIDE_RIGHT);
             return true;
         });
+
+        return root;
     }
 };
-
-static void bind_api_settings_actions(brls::TabFrame* tabFrame)
-{
-    if (!tabFrame)
-        return;
-
-    brls::View* settingsTab = tabFrame->getActiveTab();
-    if (!settingsTab || settingsTab == g_boundSettingsTab)
-        return;
-
-    brls::Label* current = dynamic_cast<brls::Label*>(settingsTab->getView("api-source-current"));
-    brls::Button* openApiSource = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-open"));
-    if (!current || !openApiSource)
-        return;
-
-    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
-    openApiSource->registerClickAction([](brls::View* view) {
-        log_stage("API SOURCE VIEW OPEN");
-        view->present(new ApiSourceView());
-        return true;
-    });
-
-    if (g_activeSidebarItem)
-        openApiSource->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
-
-    g_boundSettingsTab = settingsTab;
-    log_stage("SETTINGS API PAGE BOUND");
-}
 
 '''
 
 path.write_text(source[:start] + replacement + source[end:])
-print("API source selector now uses a presented Borealis Box instead of an Activity stack")
+print("API source activity now uses themed XML content")
