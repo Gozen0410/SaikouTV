@@ -1,6 +1,7 @@
 from pathlib import Path
 
 path = Path("switch/source/main.cpp")
+xml_path = Path("switch/romfs/xml/activity/api_source.xml")
 source = path.read_text()
 
 start = source.find("class ApiSourceActivity : public brls::Activity")
@@ -10,54 +11,47 @@ end = source.find("static void bind_api_settings_actions", start)
 if end < 0:
     raise SystemExit("Could not locate API settings binder")
 
+xml_path.write_text(r'''<brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
+    <brls:Label width="auto" height="auto" text="API Source" fontSize="36" />
+    <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="16" />
+    <brls:Label width="auto" height="auto" text="Choose the anime metadata provider" marginTop="8" />
+    <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="28" />
+    <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" marginTop="18" />
+    <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" marginTop="18" />
+</brls:Box>''')
+
 replacement = r'''class ApiSourceActivity : public brls::Activity
 {
 public:
     brls::View* createContentView() override
     {
-        brls::Box* root = new brls::Box(brls::Axis::COLUMN);
-        root->setWidth(900);
-        root->setGrow(1.0f);
-        root->setPadding(50, 70, 40, 70);
+        brls::View* root = brls::View::createFromXMLResource("activity/api_source.xml");
+        if (!root)
+            return nullptr;
 
-        brls::Label* heading = new brls::Label();
-        heading->setText("API Source");
-        heading->setFontSize(40);
-        heading->setFocusable(false);
-        root->addView(heading);
+        brls::Label* current = dynamic_cast<brls::Label*>(root->getView("api-source-current"));
+        brls::Button* miruro = dynamic_cast<brls::Button*>(root->getView("api-source-miruro"));
+        brls::Button* animepahe = dynamic_cast<brls::Button*>(root->getView("api-source-animepahe"));
+        brls::Button* gogoanime = dynamic_cast<brls::Button*>(root->getView("api-source-gogoanime"));
 
-        brls::Label* selected = new brls::Label();
-        selected->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
-        selected->setFontSize(20);
-        selected->setMargins(0, 16, 0, 0);
-        selected->setFocusable(false);
-        root->addView(selected);
+        if (current)
+            current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
 
-        brls::Label* hint = new brls::Label();
-        hint->setText("Choose the anime metadata provider");
-        hint->setFontSize(15);
-        hint->setMargins(0, 8, 0, 0);
-        hint->setFocusable(false);
-        root->addView(hint);
-
-        auto addProvider = [root, selected](const char* name, int sourceId, float topMargin) {
-            brls::Button* button = new brls::Button();
-            button->setText(name);
-            button->setWidth(760);
-            button->setMargins(0, topMargin, 0, 0);
-            button->registerClickAction([selected, sourceId](brls::View*) {
+        auto bindProvider = [current](brls::Button* button, int sourceId) {
+            if (!button) return;
+            button->registerClickAction([current, sourceId](brls::View*) {
                 g_apiSource = sourceId;
                 save_api_source();
-                selected->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
+                if (current)
+                    current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
                 log_stage("API SOURCE SELECTION SAVED");
                 return true;
             });
-            root->addView(button);
         };
 
-        addProvider("Miruro", 0, 28);
-        addProvider("AnimePahe", 1, 18);
-        addProvider("Gogoanime", 2, 18);
+        bindProvider(miruro, 0);
+        bindProvider(animepahe, 1);
+        bindProvider(gogoanime, 2);
 
         root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
             log_stage("API SOURCE ACTIVITY BACK");
@@ -72,4 +66,4 @@ public:
 '''
 
 path.write_text(source[:start] + replacement + source[end:])
-print("API source activity rebuilt with direct content and B-back action")
+print("API source activity now uses themed XML content")
