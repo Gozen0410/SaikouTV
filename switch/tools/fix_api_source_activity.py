@@ -11,10 +11,9 @@ end = source.find("static void bind_api_settings_actions", start)
 if end < 0:
     raise SystemExit("Could not locate API settings binder")
 
-xml_path.write_text(r'''<brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
-    <brls:Label width="auto" height="auto" text="API Source" fontSize="36" />
+xml_path.write_text(r'''<brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50" paddingBottom="40">
+    <brls:Label width="auto" height="auto" text="Choose the anime metadata provider" />
     <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="16" />
-    <brls:Label width="auto" height="auto" text="Choose the anime metadata provider" marginTop="8" />
     <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="28" />
     <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" marginTop="18" />
     <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" marginTop="18" />
@@ -26,29 +25,33 @@ public:
     brls::View* createContentView() override
     {
         log_stage("API SOURCE CREATE CONTENT START");
-        brls::View* root = brls::View::createFromXMLResource("activity/api_source.xml");
-        if (!root)
+
+        // Use Borealis' normal AppletFrame as the Activity root. Activities are
+        // expected to contain a full frame (header/content/footer), not a bare
+        // auto-sized Box. The AppletFrame owns the content layout and gives it
+        // the same sizing/focus behavior as other Borealis pages.
+        brls::AppletFrame* frame = new brls::AppletFrame();
+        frame->setTitle("API Source");
+
+        brls::View* content = brls::View::createFromXMLResource("activity/api_source.xml");
+        if (!content)
         {
             log_stage("API SOURCE XML RESOURCE FAILED");
+            delete frame;
             return nullptr;
         }
-
-        // Activity roots are not children of a Box. Give the root an explicit
-        // full-window layout so Yoga cannot collapse an auto-sized root.
-        root->setDimensions(brls::Application::contentWidth, brls::Application::contentHeight);
-        root->setBackground(brls::ViewBackground::BACKDROP);
-        root->setAlpha(1.0f);
         log_stage("API SOURCE XML RESOURCE LOADED");
 
-        brls::Label* current = dynamic_cast<brls::Label*>(root->getView("api-source-current"));
-        brls::Button* miruro = dynamic_cast<brls::Button*>(root->getView("api-source-miruro"));
-        brls::Button* animepahe = dynamic_cast<brls::Button*>(root->getView("api-source-animepahe"));
-        brls::Button* gogoanime = dynamic_cast<brls::Button*>(root->getView("api-source-gogoanime"));
+        brls::Label* current = dynamic_cast<brls::Label*>(content->getView("api-source-current"));
+        brls::Button* miruro = dynamic_cast<brls::Button*>(content->getView("api-source-miruro"));
+        brls::Button* animepahe = dynamic_cast<brls::Button*>(content->getView("api-source-animepahe"));
+        brls::Button* gogoanime = dynamic_cast<brls::Button*>(content->getView("api-source-gogoanime"));
 
         if (!current || !miruro || !animepahe || !gogoanime)
         {
             log_stage("API SOURCE XML VIEW LOOKUP FAILED");
-            return root;
+            delete frame;
+            return nullptr;
         }
 
         current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
@@ -67,18 +70,19 @@ public:
         bindProvider(animepahe, 1);
         bindProvider(gogoanime, 2);
 
-        root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
+        frame->setContentView(content);
+        frame->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
             log_stage("API SOURCE ACTIVITY BACK");
             brls::Application::popActivity(brls::TransitionAnimation::SLIDE_RIGHT);
             return true;
         });
 
         log_stage("API SOURCE CONTENT READY");
-        return root;
+        return frame;
     }
 };
 
 '''
 
 path.write_text(source[:start] + replacement + source[end:])
-print("API source activity root is now explicitly sized to the Borealis window")
+print("API source Activity now uses Borealis AppletFrame")
