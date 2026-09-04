@@ -4,8 +4,9 @@ path = Path("switch/source/main.cpp")
 xml_path = Path("switch/romfs/xml/activity/api_source.xml")
 source = path.read_text()
 
-# The provider registry is the single source of truth for the selector. This
-# keeps adding/removing providers independent from the Activity implementation.
+# The provider registry is the single source of truth for the selector. Keep
+# this include in the generated translation unit so provider IDs/names are not
+# duplicated across the Activity and persistence helpers.
 include = '#include "api_sources.hpp"\n'
 if include not in source:
     first_include_end = source.find("\n", source.find("#include"))
@@ -13,8 +14,9 @@ if include not in source:
         raise SystemExit("Could not locate main.cpp include boundary")
     source = source[:first_include_end + 1] + include + source[first_include_end + 1:]
 
-# The selector patch originally owned api_source_name(). Replace that local
-# helper with the shared registry helper and allow all currently registered IDs.
+# The original selector patch owns persistence, but its name helper becomes
+# redundant once the shared registry is included. Replace only that exact old
+# helper and broaden validation through the registry's enabled flag.
 old_name = '''static const char* api_source_name(int source)
 {
     switch (source)
@@ -30,6 +32,33 @@ if old_name in source:
     source = source.replace(old_name, '', 1)
 source = source.replace('value >= 0 && value <= 2', 'api_source_is_valid(value)', 1)
 
+# Keep cache invalidation local and deliberately narrow. Current Home uses the
+# six generic trending cover files; settings and debug logs are never touched.
+if "static void clear_api_cache()" not in source:
+    marker = 'class ApiSourceActivity : public brls::Activity\n'
+    helper = r'''static void clear_api_cache()
+{
+    int removed = 0;
+    for (int i = 0; i < 6; ++i)
+    {
+        char path[128];
+        std::snprintf(path, sizeof(path), "%s/trending_%d.jpg", kCacheDir, i);
+        if (std::remove(path) == 0)
+            ++removed;
+    }
+
+    char marker[96];
+    std::snprintf(marker, sizeof(marker), "API CACHE CLEARED FILES %d", removed);
+    log_stage(marker);
+}
+
+'''
+    if source.count(marker) != 1:
+        raise SystemExit("Could not locate ApiSourceActivity boundary")
+    source = source.replace(marker, helper + marker, 1)
+
+# Find the Activity again after the helper insertion; the previous version
+# calculated this offset before insertion and corrupted the generated class.
 start = source.find("class ApiSourceActivity : public brls::Activity")
 if start < 0:
     raise SystemExit("Could not locate ApiSourceActivity")
@@ -53,9 +82,13 @@ public:
 
     brls::View* createContentView() override
     {
-        brls::View* root = brls::View::createFromXMLResource("activity/api_source.xml");
+        brls::View* rootView = brls::View::createFromXMLResource("activity/api_source.xml");
+        brls::Box* root = dynamic_cast<brls::Box*>(rootView);
         if (!root)
+        {
+            delete rootView;
             return nullptr;
+        }
 
         brls::Label* current = dynamic_cast<brls::Label*>(root->getView("api-source-current"));
         if (current)
@@ -118,29 +151,6 @@ private:
 };
 
 '''
-
-# Keep cache invalidation local and deliberately narrow: current Home uses the
-# six generic trending cover files. Settings and debug logs are never touched.
-if "static void clear_api_cache()" not in source:
-    marker = 'class ApiSourceActivity : public brls::Activity\n'
-    helper = r'''static void clear_api_cache()
-{
-    int removed = 0;
-    for (int i = 0; i < 6; ++i)
-    {
-        char path[128];
-        std::snprintf(path, sizeof(path), "%s/trending_%d.jpg", kCacheDir, i);
-        if (std::remove(path) == 0)
-            ++removed;
-    }
-
-    char marker[96];
-    std::snprintf(marker, sizeof(marker), "API CACHE CLEARED FILES %d", removed);
-    log_stage(marker);
-}
-
-'''
-    source = source.replace(marker, helper + marker, 1)
 
 source = source[:start] + replacement + source[end:]
 path.write_text(source)
