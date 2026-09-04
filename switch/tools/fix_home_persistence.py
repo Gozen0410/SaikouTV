@@ -20,8 +20,9 @@ if "g_homeSidebarItem = sidebarBox->getDefaultFocus();" not in source:
     source = source.replace(marker, marker + '                g_homeSidebarItem = sidebarBox->getDefaultFocus();\n', 1)
 
 # Update the sidebar active-event subscription without depending on the exact
-# formatting of the controller patch.
-if "active == g_homeSidebarItem" not in source:
+# formatting of the controller patch. A pending API-source refresh is consumed
+# only when Home actually becomes the active sidebar item.
+if "g_apiSourceRefreshPending = false;" not in source:
     pattern = re.compile(
         r'item->getActiveEvent\(\)->subscribe\(\[\]\(brls::View\* active\) \{\s*'
         r'g_activeSidebarItem = active;\s*\}\);'
@@ -29,7 +30,16 @@ if "active == g_homeSidebarItem" not in source:
     replacement = '''item->getActiveEvent()->subscribe([](brls::View* active) {
                                     g_activeSidebarItem = active;
                                     if (g_homeContentInstalled && !g_homeRefreshInProgress && active == g_homeSidebarItem)
-                                        g_refreshRequested = true;
+                                    {
+                                        if (g_apiSourceRefreshPending)
+                                        {
+                                            g_apiSourceRefreshPending = false;
+                                            g_refreshRequested = true;
+                                            log_stage("HOME ACTIVE - CONSUMING API SOURCE REFRESH");
+                                        }
+                                        else
+                                            g_refreshRequested = true;
+                                    }
                                 });'''
     source, count = pattern.subn(replacement, source, count=1)
     if count != 1:
@@ -93,4 +103,4 @@ if 'g_homeRefreshInProgress = false;' not in source:
     source = source.replace(marker, marker + '    g_homeRefreshInProgress = false;\n    g_homeContentInstalled = true;\n', 1)
 
 path.write_text(source)
-print("Home persistence/focus patch applied")
+print("Home refresh now consumes pending API changes only when Home becomes active")
