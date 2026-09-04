@@ -71,7 +71,7 @@ jobs:
               s = s.replace('#include <borealis/views/tab_frame.hpp>\n', '#include <borealis/views/tab_frame.hpp>\n#include <tinyxml2.h>\n', 1)
 
           marker = 'void TabFrame::addSeparator()'
-          method = '''void TabFrame::setTabContent(View* content)\n{\n    if (!content)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    if (!contentView)\n    {\n        delete content;\n        return;\n    }\n\n    if (this->activeTab)\n    {\n        contentView->removeView(this->activeTab);\n        this->activeTab = nullptr;\n    }\n\n    content->setGrow(1.0f);\n    contentView->addView(content);\n    this->activeTab = content;\n\n    View* sidebarFocus = this->sidebar->getDefaultFocus();\n    if (sidebarFocus)\n    {\n        sidebarFocus->setCustomNavigationRoute(FocusDirection::RIGHT, content);\n        content->setCustomNavigationRoute(FocusDirection::LEFT, sidebarFocus);\n    }\n}\n\n'''
+          method = '''void TabFrame::setTabContent(View* content)\n{\n    if (!content)\n        return;\n\n    Box* contentView = (Box*)this->contentView;\n    if (!contentView)\n        return;\n\n    if (this->activeTab)\n    {\n        contentView->removeView(this->activeTab);\n        this->activeTab = nullptr;\n    }\n\n    content->setGrow(1.0f);\n    contentView->addView(content);\n    this->activeTab = content;\n}\n\n'''
           if 'void TabFrame::setTabContent(View* content)' not in s:
               if s.count(marker) != 1:
                   raise SystemExit(f'expected exactly one TabFrame addSeparator definition, found {s.count(marker)}')
