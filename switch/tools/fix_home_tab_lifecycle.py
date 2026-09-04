@@ -25,6 +25,13 @@ if "~TabFrame() override;" not in s:
     if s.count(marker) != 1:
         raise SystemExit("TabFrame constructor declaration not found")
     s = s.replace(marker, marker + "    ~TabFrame() override;\n", 1)
+# Expose the currently attached tab for controller-side focus checks without
+# retaining a second raw pointer to Home content in Saikou itself.
+if "View* getActiveTab() const;" not in s:
+    marker = "    void addSeparator();\n"
+    if s.count(marker) != 1:
+        raise SystemExit("TabFrame separator declaration not found")
+    s = s.replace(marker, marker + "    View* getActiveTab() const;\n", 1)
 tab_h.write_text(s)
 
 s = tab_cpp.read_text()
@@ -129,6 +136,11 @@ set_block = '''void TabFrame::setTabContent(View* content)
     contentView->addView(content);
     this->activeTab = content;
     this->cachedHomeTab = content;
+}
+
+View* TabFrame::getActiveTab() const
+{
+    return this->activeTab;
 }
 '''
 s = s[:start] + set_block + s[end:]
