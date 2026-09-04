@@ -88,7 +88,7 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
     openApiSource->registerClickAction([](brls::View*) {
         log_stage("API SOURCE ACTIVITY OPEN");
-        brls::Application::pushActivity(new ApiSourceActivity(), brls::TransitionAnimation::SLIDE_LEFT);
+        brls::Application::pushActivity(new ApiSourceActivity(), brls::TransitionAnimation::FADE);
         return true;
     });
 
@@ -101,4 +101,4 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
 
 '''
 source_path.write_text(source[:start] + replacement + source[end:])
-print("API source Activity rewritten programmatically")
+print("API source Activity rewritten with fade push transition")
