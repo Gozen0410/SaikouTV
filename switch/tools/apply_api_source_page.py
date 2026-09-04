@@ -33,32 +33,29 @@ replacement = r'''class ApiSourceActivity : public brls::Activity
 public:
     brls::View* createContentView() override
     {
-        brls::Box* root = new brls::Box(brls::Axis::COLUMN);
-        root->setWidth(900);
-        root->setGrow(1.0f);
-        root->setPadding(50, 70, 40, 70);
+        brls::AppletFrame* frame = new brls::AppletFrame();
+        frame->setTitle("API Source");
 
-        brls::Label* heading = new brls::Label();
-        heading->setText("API Source");
-        heading->setFontSize(40);
-        heading->setFocusable(false);
-        root->addView(heading);
+        brls::Box* content = new brls::Box(brls::Axis::COLUMN);
+        content->setWidth(brls::View::AUTO);
+        content->setHeight(brls::View::AUTO);
+        content->setGrow(1.0f);
+        content->setPadding(40, 70, 40, 70);
 
         brls::Label* selected = new brls::Label();
         selected->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
         selected->setFontSize(20);
-        selected->setMargins(0, 16, 0, 0);
         selected->setFocusable(false);
-        root->addView(selected);
+        content->addView(selected);
 
         brls::Label* hint = new brls::Label();
         hint->setText("Choose the anime metadata provider");
         hint->setFontSize(15);
         hint->setMargins(0, 8, 0, 0);
         hint->setFocusable(false);
-        root->addView(hint);
+        content->addView(hint);
 
-        auto makeProvider = [root, selected](const char* name, int source, float topMargin) {
+        auto makeProvider = [content, selected](const char* name, int source, float topMargin) {
             brls::Button* button = new brls::Button();
             button->setText(name);
             button->setWidth(760);
@@ -70,14 +67,16 @@ public:
                 log_stage("API SOURCE SELECTION SAVED");
                 return true;
             });
-            root->addView(button);
+            content->addView(button);
             return button;
         };
 
         makeProvider("Miruro", 0, 28);
         makeProvider("AnimePahe", 1, 18);
         makeProvider("Gogoanime", 2, 18);
-        return root;
+
+        frame->setContentView(content);
+        return frame;
     }
 };
 
@@ -111,4 +110,4 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
 
 '''
 source_path.write_text(source[:start] + replacement + source[end:])
-print("API source Activity rewritten programmatically")
+print("API source Activity now uses native Borealis AppletFrame")
