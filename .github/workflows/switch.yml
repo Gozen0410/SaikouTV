@@ -139,6 +139,13 @@ jobs:
           python3 switch/tools/apply_api_source_page.py
           test -f switch/romfs/xml/activity/main.xml
           grep -q 'ApiSourceActivity' switch/source/main.cpp
+      - name: Fix API source activity content
+        run: |
+          set -eux
+          python3 -m py_compile switch/tools/fix_api_source_activity.py
+          python3 switch/tools/fix_api_source_activity.py
+          grep -q 'API SOURCE ACTIVITY BACK' switch/source/main.cpp
+          grep -q 'BUTTON_B' switch/source/main.cpp
       - name: Build ELF
         working-directory: switch
         run: |
