@@ -55,7 +55,7 @@ public:
 
         root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
             log_stage("API SOURCE ACTIVITY BACK");
-            brls::Application::popActivity(brls::TransitionAnimation::SLIDE_RIGHT);
+            brls::Application::popActivity(brls::TransitionAnimation::FADE);
             return true;
         });
 
