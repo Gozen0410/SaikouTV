@@ -13,12 +13,15 @@ xml = xml_path.read_text()
 # XML and its actions are attached after Borealis creates the tab.
 
 if "static int g_apiSource" not in source:
-    marker = 'static bool g_homeRefreshInProgress = false;\n'
+    # Home persistence intentionally removed the old g_homeRefreshInProgress
+    # global. Use the controller's stable refresh global as the insertion
+    # anchor instead of coupling this feature to Home's internal state.
+    marker = 'static bool g_refreshRequested = false;\n'
     addition = marker + '''static int g_apiSource = 0; // 0=Miruro, 1=AnimePahe, 2=Gogoanime
 static brls::View* g_boundSettingsTab = nullptr;
 '''
     if source.count(marker) != 1:
-        raise SystemExit("Could not locate Home persistence globals")
+        raise SystemExit("Could not locate controller refresh global")
     source = source.replace(marker, addition, 1)
 
 # The Settings tab is XML-created, so expose only the active tab pointer from
