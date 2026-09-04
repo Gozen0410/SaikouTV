@@ -1,0 +1,8 @@
+<brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50" paddingBottom="40">
+    <brls:Label width="auto" height="auto" text="API Source" fontSize="40" />
+    <brls:Label id="api-source-selected" width="auto" height="auto" text="Anime API: Miruro" marginTop="16" />
+    <brls:Label width="auto" height="auto" text="Choose the anime metadata provider" marginTop="8" />
+    <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="28" />
+    <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" marginTop="18" />
+    <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" marginTop="18" />
+</brls:Box>
