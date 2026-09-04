@@ -10,12 +10,10 @@ for p in (tab_h, tab_cpp):
     if not p.exists():
         raise SystemExit(f"Missing Borealis source: {p}")
 
-# Keep Borealis' normal TabFrame behavior for every tab except Home.  Home is
+# Keep Borealis' normal TabFrame behavior for every tab except Home. Home is
 # dynamically populated after its first request, so destroying it on every
-# sidebar change loses the cards.  Switchfin solves this by letting the tab
-# retain its attached View and re-attaching it when the tab becomes active.
-# We implement the same idea minimally inside the existing TabFrame rather than
-# replacing TabFrame's navigation or touching Box ownership semantics.
+# sidebar change loses the cards. Switchfin solves this by retaining the tab's
+# attached View and re-attaching it when the tab becomes active.
 s = tab_h.read_text()
 if "View* cachedHomeTab = nullptr;" not in s:
     marker = "    View* activeTab = nullptr;\n"
@@ -31,8 +29,17 @@ tab_h.write_text(s)
 
 s = tab_cpp.read_text()
 start = s.find("void TabFrame::addTab(std::string label, TabViewCreator creator)\n")
-end = s.find("\nvoid TabFrame::addSeparator()", start)
-if start < 0 or end < 0:
+if start < 0:
+    raise SystemExit("TabFrame addTab definition not found")
+# Patch Borealis injects setTabContent() before addSeparator(). Preserve it
+# instead of accidentally deleting it while replacing addTab().
+content_marker = s.find("\nvoid TabFrame::setTabContent(View* content)\n", start)
+separator_marker = s.find("\nvoid TabFrame::addSeparator()", start)
+if content_marker >= 0:
+    end = content_marker
+elif separator_marker >= 0:
+    end = separator_marker
+else:
     raise SystemExit("TabFrame addTab boundaries not found")
 
 # Home is the first tab in Saikou's TabFrame. Capture that fact when the tab is
@@ -83,11 +90,9 @@ add_tab = f'''void TabFrame::addTab(std::string label, TabViewCreator creator)
 '''
 s = s[:start] + add_tab + s[end:]
 
-# setTabContent() is injected by the workflow before this script. It is used by
-# the Home loader to replace the placeholder with dynamically generated cards.
-# If the old content is Home, remove it without deleting it, then explicitly
-# delete the placeholder because it is being replaced. The newly installed
-# content becomes the retained Home View.
+# setTabContent() was injected by Patch Borealis before this script. It is used
+# by the Home loader to replace the placeholder with dynamically generated
+# cards. Replace that implementation without changing its location.
 start = s.find("void TabFrame::setTabContent(View* content)\n")
 if start < 0:
     raise SystemExit("TabFrame setTabContent was not injected by workflow")
