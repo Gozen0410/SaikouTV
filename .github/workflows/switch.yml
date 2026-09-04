@@ -85,8 +85,8 @@ jobs:
           python3 -m py_compile tools/fix_home_tab_lifecycle.py
           python3 tools/fix_home_tab_lifecycle.py
           grep -q 'cachedHomeTab' borealis/library/include/borealis/views/tab_frame.hpp
-          grep -q 'void Box::detachView' borealis/library/lib/core/box.cpp
-          grep -q 'label == "Home"' borealis/library/lib/views/tab_frame.cpp
+          grep -q 'removeView(this->activeTab, false)' borealis/library/lib/views/tab_frame.cpp
+          grep -q 'cachedHomeTab' borealis/library/lib/views/tab_frame.cpp
       - name: Apply Saikou trending carousel and controller navigation
         run: |
           set -eux
@@ -120,7 +120,7 @@ jobs:
           python3 switch/tools/fix_home_persistence.py
           grep -q 'g_homeSidebarItem' switch/source/main.cpp
           grep -q 'g_homeContentInstalled' switch/source/main.cpp
-          grep -q 'g_homeContentView' switch/source/main.cpp
+          ! grep -q 'g_homeContentView' switch/source/main.cpp
       - name: Add API source selector
         run: |
           set -eux
