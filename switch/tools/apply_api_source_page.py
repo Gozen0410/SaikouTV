@@ -22,9 +22,9 @@ new_settings = '''        <brls:Box width="auto" height="auto" axis="column" pad
             <brls:Button id="api-source-open" width="auto" height="auto" text="API Source" marginTop="24" />
             <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="10" />
         </brls:Box>'''
-if old_settings not in xml:
-    raise SystemExit("Could not locate API selector Settings block")
-xml_path.write_text(xml.replace(old_settings, new_settings, 1))
+if old_settings in xml:
+    xml = xml.replace(old_settings, new_settings, 1)
+xml_path.write_text(xml)
 
 start = source.find("static void bind_api_settings_actions(brls::TabFrame* tabFrame)")
 if start == -1:
@@ -83,9 +83,6 @@ public:
         makeProvider("AnimePahe", 1, 18);
         makeProvider("Gogoanime", 2, 18);
 
-        // pushActivity() deliberately starts a new activity at alpha 0 when
-        // transitioning from an opaque activity. Mark the new content hidden
-        // so its subsequent show() call actually runs the fade-in animation.
         root->hide([] {}, false, 0);
 
         root->registerAction("Back", brls::BUTTON_B, [](brls::View*) {
@@ -102,12 +99,11 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     if (!tabFrame)
         return;
 
-    brls::View* settingsTab = tabFrame->getActiveTab();
-    if (!settingsTab || settingsTab == g_boundSettingsTab)
-        return;
-
-    brls::Label* current = dynamic_cast<brls::Label*>(settingsTab->getView("api-source-current"));
-    brls::Button* openApiSource = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-open"));
+    // Do not depend on TabFrame::getActiveTab(). The Settings controls are
+    // already addressable by their XML IDs, and getView() is part of the
+    // stable Borealis View API used elsewhere in this project.
+    brls::Label* current = dynamic_cast<brls::Label*>(tabFrame->getView("api-source-current"));
+    brls::Button* openApiSource = dynamic_cast<brls::Button*>(tabFrame->getView("api-source-open"));
     if (!current || !openApiSource)
         return;
 
@@ -121,10 +117,10 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     if (g_activeSidebarItem)
         openApiSource->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
 
-    g_boundSettingsTab = settingsTab;
+    g_boundSettingsTab = openApiSource;
     log_stage("SETTINGS API PAGE BOUND");
 }
 
 '''
 source_path.write_text(source[:start] + replacement + source[end:])
-print("API source Activity uses explicit hidden-to-show lifecycle")
+print("API source binder no longer calls TabFrame::getActiveTab()")
