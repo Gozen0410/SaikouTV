@@ -14,12 +14,30 @@ if "static int g_apiSource" not in source:
         raise SystemExit("Could not locate Home persistence globals")
     source = source.replace(marker, addition, 1)
 
-# Do not generate a second provider-name helper; api_sources.hpp owns it.
-if "static const char* api_source_name(int source)" in source:
-    start = source.find("static const char* api_source_name(int source)")
-    end = source.find("\nstatic void bind_api_settings_actions", start)
-    if start != -1 and end != -1:
-        source = source[:start] + source[end + 1:]
+# api_sources.hpp owns the provider-name helper. Remove any legacy helper from
+# main.cpp using brace matching rather than relying on the following function's
+# exact name/spacing.
+legacy_marker = "static const char* api_source_name(int source)"
+if legacy_marker in source:
+    start = source.find(legacy_marker)
+    brace_start = source.find("{", start)
+    if brace_start == -1:
+        raise SystemExit("Could not locate legacy api_source_name body")
+    depth = 0
+    end = -1
+    for index in range(brace_start, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index + 1
+                break
+    if end == -1:
+        raise SystemExit("Could not find end of legacy api_source_name body")
+    while end < len(source) and source[end] in " \t\r\n":
+        end += 1
+    source = source[:start] + source[end:]
 
 # Persist the selected provider.
 if "static constexpr const char* kSettingsPath" not in source:
