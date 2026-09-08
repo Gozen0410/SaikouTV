@@ -5,12 +5,17 @@ xml_path = Path("switch/romfs/xml/activity/main.xml")
 source = source_path.read_text()
 xml = xml_path.read_text()
 
+# The API selector pass creates the five-provider Settings block first. Convert
+# that complete block into the compact Settings entry point for the dedicated
+# API Source activity, rather than expecting the older three-provider layout.
 old_settings = '''        <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
-            <brls:Label width="auto" height="auto" text="API Source" fontSize="36" />
+            <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
             <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="20" />
-            <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="10" />
+            <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="20" />
             <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" />
             <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />
+            <brls:Button id="api-source-aniwatch" width="auto" height="auto" text="Aniwatch" />
+            <brls:Button id="api-source-hianime" width="auto" height="auto" text="HiAnime" />
         </brls:Box>'''
 new_settings = '''        <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
@@ -18,7 +23,7 @@ new_settings = '''        <brls:Box width="auto" height="auto" axis="column" pad
             <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="10" />
         </brls:Box>'''
 if old_settings not in xml:
-    raise SystemExit("Could not locate working API selector Settings block")
+    raise SystemExit("Could not locate API selector Settings block")
 xml_path.write_text(xml.replace(old_settings, new_settings, 1))
 
 start = source.find("static void bind_api_settings_actions(brls::TabFrame* tabFrame)")
