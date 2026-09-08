@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 # Final generated-source pass for Home refresh/provider routing.
 # Keep provider failure handling explicit: an alternate provider must never
@@ -48,9 +49,6 @@ new_request_loop = 'primaryOk = api_response_is_valid(requestRc, httpCode, respo
 if old_request_loop in source:
     source = source.replace(old_request_loop, new_request_loop, 1)
 
-# If an alternate provider returns 4xx/5xx, stop the request cleanly. Do not
-# execute the Miruro-specific AniList fallback and do not return an error body
-# that downstream Home parsing could mistake for usable JSON.
 if "ALTERNATE PROVIDER FAILED - NO FALLBACK" not in source:
     marker = '    if (primaryOk)\n    {\n'
     guard = '''    if (!primaryOk && g_apiSource != 0)\n    {\n        log_stage("ALTERNATE PROVIDER FAILED - NO FALLBACK");\n        result.status = std::string(api_source_name(g_apiSource)) + " request failed";\n        result.response.clear();\n        curl_easy_cleanup(curl);\n        curl_global_cleanup();\n        if (socketOwned) socketExit();\n        return result;\n    }\n\n'''
@@ -72,5 +70,48 @@ source = source.replace(
     1,
 )
 
+# The controller's refresh helper must be transactional. Build and validate
+# the replacement Home view first; only swap it into the TabFrame when the
+# selected provider returned usable data. A 4xx/5xx or empty response leaves
+# the currently displayed Home untouched.
+if "REFRESH ABORTED - KEEPING CURRENT HOME" not in source:
+    pattern = re.compile(
+        r'(static void refresh_home_content\(brls::TabFrame\* tabFrame\)\s*\{.*?'
+        r'ApiResult api = run_api_probe\(\);\s*)',
+        re.S,
+    )
+    replacement = r'''\1    if (api.response.empty())
+    {
+        log_stage("REFRESH ABORTED - KEEPING CURRENT HOME");
+        delete homeContent;
+        return;
+    }
+'''
+    source, count = pattern.subn(replacement, source, count=1)
+    if count != 1:
+        raise SystemExit("Could not locate refresh_home_content provider result")
+
+# Prevent overlapping refresh transactions. API changes that arrive while a
+# refresh is running are coalesced into the next loop instead of rebuilding
+# the TabFrame twice at once.
+if "g_homeRefreshInProgress" in source and "REFRESH IGNORED - ALREADY IN PROGRESS" not in source:
+    marker = 'static void refresh_home_content(brls::TabFrame* tabFrame)\n{\n'
+    replacement = '''static void refresh_home_content(brls::TabFrame* tabFrame)
+{
+    if (g_homeRefreshInProgress)
+    {
+        log_stage("REFRESH IGNORED - ALREADY IN PROGRESS");
+        return;
+    }
+    g_homeRefreshInProgress = true;
+    struct RefreshGuard
+    {
+        ~RefreshGuard() { g_homeRefreshInProgress = false; }
+    } refreshGuard;
+'''
+    if source.count(marker) != 1:
+        raise SystemExit("Could not locate refresh_home_content definition")
+    source = source.replace(marker, replacement, 1)
+
 main.write_text(source)
-print("Alternate provider HTTP failures now return cleanly without fallback or parsing")
+print("Failed Home refreshes now leave the current Home intact and overlapping refreshes are coalesced")
