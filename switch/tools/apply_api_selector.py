@@ -30,7 +30,16 @@ if "View* getActiveTab() const" not in header:
     header = header.replace(marker, addition, 1)
     borealis_header.write_text(header)
 
-if "static const char* api_source_name" not in source:
+# The shared api_sources.hpp registry owns api_source_name(). Do not generate
+# another local definition here: that creates a compile-time redefinition.
+if "static const char* api_source_name(int source)" in source:
+    start = source.find("static const char* api_source_name(int source)")
+    end = source.find("\nstatic void bind_api_settings_actions", start)
+    if start == -1 or end == -1:
+        raise SystemExit("Could not locate generated local api_source_name helper")
+    source = source[:start] + source[end+1:]
+
+if "static constexpr const char* kSettingsPath" not in source:
     marker = 'static brls::View* load_home_content_from_xml()\n'
     helper = r'''static constexpr const char* kSettingsPath = "sdmc:/switch/SaikouTV/settings.cfg";
 
@@ -58,18 +67,6 @@ static void save_api_source()
     std::fprintf(file, "%d\n", g_apiSource);
     std::fclose(file);
     log_stage("API SOURCE SETTINGS SAVED");
-}
-
-static const char* api_source_name(int source)
-{
-    switch (source)
-    {
-        case 1: return "AnimePahe";
-        case 2: return "Gogoanime";
-        case 3: return "Aniwatch";
-        case 4: return "HiAnime";
-        default: return "Miruro";
-    }
 }
 
 static void bind_api_settings_actions(brls::TabFrame* tabFrame)
@@ -163,7 +160,12 @@ if 'id="api-source-aniwatch"' not in xml:
     settings_marker = '''    <brls:Tab label="Settings">
         <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
-            <brls:Label width="auto" height="auto" text="Saikou Switch native port" marginTop="20" />
+            <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="20" />
+            <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="20" />
+            <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" />
+            <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />
+            <brls:Button id="api-source-aniwatch" width="auto" height="auto" text="Aniwatch" />
+            <brls:Button id="api-source-hianime" width="auto" height="auto" text="HiAnime" />
         </brls:Box>
     </brls:Tab>'''
     settings_replacement = '''    <brls:Tab label="Settings">
@@ -233,4 +235,4 @@ if 'load_api_source();' not in source:
     source = source.replace(marker, marker + '    load_api_source();\n', 1)
 
 source_path.write_text(source)
-print("API selector now injects all five providers and queues Home refresh on selection")
+print("API selector now uses the shared provider registry name helper")
