@@ -71,17 +71,16 @@ source = source.replace(
     1,
 )
 
-# Normalize Gogoanime's documented root array of {title,image,url} objects to
-# the existing Home renderer's temporary {results:[...]} format. The existing
-# renderer then extracts title/image without any UI changes.
+# Normalize Gogoanime's root array of {title,image,url} objects to a small
+# provider-neutral shape without generating malformed escaped string literals.
 if "static std::string normalize_gogoanime_response" not in source:
     marker = 'static std::vector<std::string> extract_trending_titles(const std::string& response)\n'
-    helper = r'''static std::string normalize_gogoanime_response(const std::string& response)
+    helper = '''static std::string normalize_gogoanime_response(const std::string& response)
 {
     if (response.empty() || response.front() != '[')
         return std::string();
 
-    std::string out = "{\"results\":[";
+    std::string out = "{\\\"results\\\":[";
     size_t cursor = 1;
     int count = 0;
     while (count < 6)
@@ -115,10 +114,10 @@ new_extract = '''    std::string normalizedResponse = g_apiSource == 2 ? normali
     std::vector<std::string> covers;
     if (g_apiSource == 2)
     {
-        size_t cursor = normalizedResponse.find("\"results\"");
+        size_t cursor = normalizedResponse.find("\\\"results\\\"");
         while (covers.size() < 6 && cursor != std::string::npos)
         {
-            size_t imagePos = normalizedResponse.find("\"image\"", cursor);
+            size_t imagePos = normalizedResponse.find("\\\"image\\\"", cursor);
             if (imagePos == std::string::npos) break;
             size_t objectStart = normalizedResponse.rfind('{', imagePos);
             size_t objectEnd = normalizedResponse.find('}', imagePos);
@@ -131,5 +130,8 @@ new_extract = '''    std::string normalizedResponse = g_apiSource == 2 ? normali
         covers = extract_trending_covers(normalizedResponse);'''
 source = source.replace(old_extract, new_extract, 1)
 
+# Do not define api_source_name here; api_sources.hpp already owns the provider registry/name helper.
+# This avoids a second definition in main.cpp during compilation.
+
 main.write_text(source)
-print("Gogoanime provider integrated; Aniwatch and HiAnime intentionally left for later")
+print("Gogoanime generator now emits valid C++ and uses the shared provider registry")
