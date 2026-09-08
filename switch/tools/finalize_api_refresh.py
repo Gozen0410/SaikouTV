@@ -3,8 +3,7 @@ from pathlib import Path
 main = Path("switch/source/main.cpp")
 source = main.read_text()
 
-# This pass intentionally integrates only Gogoanime (provider id 2).
-# Aniwatch and HiAnime remain in the selector registry but are not routed yet.
+# Gogoanime-only incremental integration. Keep provider IDs stable.
 old_url = 'const char* url = "https://miruro.zenos.my.id/trending?per_page=6";'
 if old_url not in source:
     raise SystemExit("Could not locate baseline provider URL")
@@ -45,7 +44,8 @@ source = source.replace(
     1,
 )
 
-# Alternate provider failure is terminal for this request.
+# Alternate provider failure is terminal for this request; Miruro keeps its
+# legacy AniList fallback behavior.
 if "ALTERNATE PROVIDER FAILED - NO FALLBACK" not in source:
     marker = '    if (primaryOk)\n    {\n'
     guard = '''    if (!primaryOk && g_apiSource != 0)
@@ -64,15 +64,14 @@ if "ALTERNATE PROVIDER FAILED - NO FALLBACK" not in source:
         raise SystemExit("Could not locate primary result branch")
     source = source.replace(marker, guard + marker, 1)
 
-# Only Miruro may use the existing AniList fallback.
 source = source.replace(
     '''    else\n    {\n        log_stage("MIRURO FAILED - STARTING ANILIST FALLBACK");''',
     '''    else if (g_apiSource == 0)\n    {\n        log_stage("MIRURO FAILED - STARTING ANILIST FALLBACK");''',
     1,
 )
 
-# Normalize Gogoanime's root array of {title,image,url} objects to a small
-# provider-neutral shape without generating malformed escaped string literals.
+# Convert the simple Gogoanime root array to the existing renderer's expected
+# results array. Generate valid C++ string literals directly.
 if "static std::string normalize_gogoanime_response" not in source:
     marker = 'static std::vector<std::string> extract_trending_titles(const std::string& response)\n'
     helper = '''static std::string normalize_gogoanime_response(const std::string& response)
@@ -106,6 +105,7 @@ if "static std::string normalize_gogoanime_response" not in source:
 old_extract = '''    std::vector<std::string> titles = extract_trending_titles(response);\n    std::vector<std::string> details = extract_trending_details(response);\n    std::vector<std::string> covers = extract_trending_covers(response);'''
 if old_extract not in source:
     raise SystemExit("Could not locate Home extraction block")
+
 new_extract = '''    std::string normalizedResponse = g_apiSource == 2 ? normalize_gogoanime_response(response) : response;
     if (normalizedResponse.empty())
         return;
@@ -130,8 +130,5 @@ new_extract = '''    std::string normalizedResponse = g_apiSource == 2 ? normali
         covers = extract_trending_covers(normalizedResponse);'''
 source = source.replace(old_extract, new_extract, 1)
 
-# Do not define api_source_name here; api_sources.hpp already owns the provider registry/name helper.
-# This avoids a second definition in main.cpp during compilation.
-
 main.write_text(source)
-print("Gogoanime generator now emits valid C++ and uses the shared provider registry")
+print("Gogoanime generator emits valid C++ and routes provider id 2")
