@@ -156,14 +156,30 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
         raise SystemExit("Could not locate Home XML helper boundary")
     source = source.replace(marker, helper + marker, 1)
 
-# Replace Settings block or extend an existing three-provider block.
+# The checked-in XML is intentionally a stable base template. Inject the
+# complete selector into the Settings tab instead of assuming an earlier
+# generated Gogoanime button is already present.
 if 'id="api-source-aniwatch"' not in xml:
-    needle = '            <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />'
-    if xml.count(needle) != 1:
-        raise SystemExit("Could not locate Gogoanime Settings button")
-    xml = xml.replace(needle, needle + '''
+    settings_marker = '''    <brls:Tab label="Settings">
+        <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
+            <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
+            <brls:Label width="auto" height="auto" text="Saikou Switch native port" marginTop="20" />
+        </brls:Box>
+    </brls:Tab>'''
+    settings_replacement = '''    <brls:Tab label="Settings">
+        <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
+            <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
+            <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="20" />
+            <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="20" />
+            <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" />
+            <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />
             <brls:Button id="api-source-aniwatch" width="auto" height="auto" text="Aniwatch" />
-            <brls:Button id="api-source-hianime" width="auto" height="auto" text="HiAnime" />''', 1)
+            <brls:Button id="api-source-hianime" width="auto" height="auto" text="HiAnime" />
+        </brls:Box>
+    </brls:Tab>'''
+    if xml.count(settings_marker) != 1:
+        raise SystemExit("Could not locate base Settings XML block")
+    xml = xml.replace(settings_marker, settings_replacement, 1)
 xml_path.write_text(xml)
 
 # Ensure the settings callback pointer is invalidated when a Settings tab is recreated.
@@ -217,4 +233,4 @@ if 'load_api_source();' not in source:
     source = source.replace(marker, marker + '    load_api_source();\n', 1)
 
 source_path.write_text(source)
-print("API selector now exposes all five providers and queues Home refresh on selection")
+print("API selector now injects all five providers and queues Home refresh on selection")
