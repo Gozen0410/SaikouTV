@@ -120,21 +120,13 @@ jobs:
           grep -q 'g_apiSource' switch/source/main.cpp
           grep -q 'AnimePahe' switch/source/main.cpp
           grep -q 'Gogoanime' switch/source/main.cpp
-      - name: Add API source page
+      - name: Validate API source Settings section
         run: |
           set -eux
           python3 -m py_compile switch/tools/apply_api_source_page.py
           python3 switch/tools/apply_api_source_page.py
           test -f switch/romfs/xml/activity/main.xml
-          grep -q 'ApiSourceActivity' switch/source/main.cpp
-      - name: Fix API source activity content
-        run: |
-          set -eux
-          python3 -m py_compile switch/tools/fix_api_source_activity.py
-          python3 switch/tools/fix_api_source_activity.py
-          grep -q 'API SOURCE ACTIVITY BACK' switch/source/main.cpp
-          grep -q 'BUTTON_B' switch/source/main.cpp
-          grep -q 'root->hide' switch/source/main.cpp
+          grep -q 'api-source-gogoanime' switch/romfs/xml/activity/main.xml
       - name: Finalize API refresh globals
         run: |
           set -eux
