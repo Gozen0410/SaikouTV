@@ -14,15 +14,13 @@ xml = xml_path.read_text()
 
 if "static int g_apiSource" not in source:
     marker = 'static bool g_homeRefreshInProgress = false;\n'
-    addition = marker + '''static int g_apiSource = 0; // 0=Miruro, 1=AnimePahe, 2=Gogoanime
+    addition = marker + '''static int g_apiSource = 0; // 0=Miruro, 1=AnimePahe, 2=Gogoanime, 3=Aniwatch, 4=HiAnime
 static brls::View* g_boundSettingsTab = nullptr;
 '''
     if source.count(marker) != 1:
         raise SystemExit("Could not locate Home persistence globals")
     source = source.replace(marker, addition, 1)
 
-# The Settings tab is XML-created, so expose only the active tab pointer from
-# the already-patched TabFrame. No content is replaced through this accessor.
 header = borealis_header.read_text()
 if "View* getActiveTab() const" not in header:
     marker = '    void addSeparator();\n'
@@ -32,7 +30,6 @@ if "View* getActiveTab() const" not in header:
     header = header.replace(marker, addition, 1)
     borealis_header.write_text(header)
 
-# Persistent provider selection helpers.
 if "static const char* api_source_name" not in source:
     marker = 'static brls::View* load_home_content_from_xml()\n'
     helper = r'''static constexpr const char* kSettingsPath = "sdmc:/switch/SaikouTV/settings.cfg";
@@ -44,7 +41,7 @@ static void load_api_source()
         return;
 
     int value = 0;
-    if (std::fscanf(file, "%d", &value) == 1 && value >= 0 && value <= 2)
+    if (std::fscanf(file, "%d", &value) == 1 && value >= 0 && value <= 4)
         g_apiSource = value;
     std::fclose(file);
 }
@@ -69,6 +66,8 @@ static const char* api_source_name(int source)
     {
         case 1: return "AnimePahe";
         case 2: return "Gogoanime";
+        case 3: return "Aniwatch";
+        case 4: return "HiAnime";
         default: return "Miruro";
     }
 }
@@ -86,14 +85,18 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
     brls::Button* miruro = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-miruro"));
     brls::Button* animepahe = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-animepahe"));
     brls::Button* gogoanime = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-gogoanime"));
+    brls::Button* aniwatch = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-aniwatch"));
+    brls::Button* hianime = dynamic_cast<brls::Button*>(settingsTab->getView("api-source-hianime"));
 
-    if (!current || !miruro || !animepahe || !gogoanime)
+    if (!current || !miruro || !animepahe || !gogoanime || !aniwatch || !hianime)
         return;
 
     miruro->registerClickAction([current](brls::View*) {
         g_apiSource = 0;
         current->setText("Anime API: Miruro");
         save_api_source();
+        g_apiSourceRefreshPending = true;
+        log_stage("API SOURCE CHANGED - REFRESH PENDING UNTIL HOME");
         return true;
     });
 
@@ -101,6 +104,8 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
         g_apiSource = 1;
         current->setText("Anime API: AnimePahe");
         save_api_source();
+        g_apiSourceRefreshPending = true;
+        log_stage("API SOURCE CHANGED - REFRESH PENDING UNTIL HOME");
         return true;
     });
 
@@ -108,19 +113,38 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
         g_apiSource = 2;
         current->setText("Anime API: Gogoanime");
         save_api_source();
+        g_apiSourceRefreshPending = true;
+        log_stage("API SOURCE CHANGED - REFRESH PENDING UNTIL HOME");
+        return true;
+    });
+
+    aniwatch->registerClickAction([current](brls::View*) {
+        g_apiSource = 3;
+        current->setText("Anime API: Aniwatch");
+        save_api_source();
+        g_apiSourceRefreshPending = true;
+        log_stage("API SOURCE CHANGED - REFRESH PENDING UNTIL HOME");
+        return true;
+    });
+
+    hianime->registerClickAction([current](brls::View*) {
+        g_apiSource = 4;
+        current->setText("Anime API: HiAnime");
+        save_api_source();
+        g_apiSourceRefreshPending = true;
+        log_stage("API SOURCE CHANGED - REFRESH PENDING UNTIL HOME");
         return true;
     });
 
     current->setText(std::string("Anime API: ") + api_source_name(g_apiSource));
 
-    // The Settings selector buttons live inside the Settings content. Route
-    // LEFT explicitly to the currently active Settings sidebar item so it
-    // cannot fall through the generic TabFrame content route to Home.
     if (g_activeSidebarItem)
     {
         miruro->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
         animepahe->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
         gogoanime->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
+        aniwatch->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
+        hianime->setCustomNavigationRoute(brls::FocusDirection::LEFT, g_activeSidebarItem);
     }
 
     g_boundSettingsTab = settingsTab;
@@ -132,30 +156,17 @@ static void bind_api_settings_actions(brls::TabFrame* tabFrame)
         raise SystemExit("Could not locate Home XML helper boundary")
     source = source.replace(marker, helper + marker, 1)
 
-# Replace the placeholder Settings body with the working selector XML.
-old_settings = '''    <brls:Tab label="Settings">
-        <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
-            <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
-            <brls:Label width="auto" height="auto" text="Saikou Switch native port" marginTop="20" />
-        </brls:Box>
-    </brls:Tab>'''
-new_settings = '''    <brls:Tab label="Settings">
-        <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
-            <brls:Label width="auto" height="auto" text="API Source" fontSize="36" />
-            <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="20" />
-            <brls:Button id="api-source-miruro" width="auto" height="auto" text="Miruro" marginTop="10" />
-            <brls:Button id="api-source-animepahe" width="auto" height="auto" text="AnimePahe" />
-            <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />
-        </brls:Box>
-    </brls:Tab>'''
-if old_settings in xml:
-    xml = xml.replace(old_settings, new_settings, 1)
-elif 'id="api-source-miruro"' not in xml or 'id="api-source-gogoanime"' not in xml:
-    raise SystemExit("Could not locate Settings XML block")
+# Replace Settings block or extend an existing three-provider block.
+if 'id="api-source-aniwatch"' not in xml:
+    needle = '            <brls:Button id="api-source-gogoanime" width="auto" height="auto" text="Gogoanime" />'
+    if xml.count(needle) != 1:
+        raise SystemExit("Could not locate Gogoanime Settings button")
+    xml = xml.replace(needle, needle + '''
+            <brls:Button id="api-source-aniwatch" width="auto" height="auto" text="Aniwatch" />
+            <brls:Button id="api-source-hianime" width="auto" height="auto" text="HiAnime" />''', 1)
 xml_path.write_text(xml)
 
-# Invalidate the bound-tab pointer when Settings is activated so that a newly
-# lazy-created XML tab gets its callbacks attached on the following frame.
+# Ensure the settings callback pointer is invalidated when a Settings tab is recreated.
 old_block = '''                        if (!sidebarContent->getChildren().empty())
                         {
                             brls::View* candidate = sidebarContent->getChildren().back();
@@ -191,8 +202,6 @@ if "SETTINGS API ACTIVE ITEM TRACKING INSTALLED" not in source:
         raise SystemExit("Could not locate sidebar tracking completion")
     source = source.replace(marker, addition, 1)
 
-# Bind only after the active XML tab exists. No Settings content replacement
-# occurs in the sidebar activation callback or main loop.
 if "bind_api_settings_actions(tabFrame);" not in source:
     marker = '    while (brls::Application::mainLoop())\n    {\n'
     addition = marker + '''        bind_api_settings_actions(tabFrame);
@@ -208,4 +217,4 @@ if 'load_api_source();' not in source:
     source = source.replace(marker, marker + '    load_api_source();\n', 1)
 
 source_path.write_text(source)
-print("API selector binding fixed: direct XML IDs, LEFT routes back to Settings")
+print("API selector now exposes all five providers and queues Home refresh on selection")
