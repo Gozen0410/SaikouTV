@@ -6,6 +6,15 @@ xml_path = Path("switch/romfs/xml/activity/main.xml")
 source = source_path.read_text()
 xml = xml_path.read_text()
 
+# The API registry is a Switch-side header. The selector pass must own its
+# include instead of relying on the retired API-source Activity patch.
+include = '#include "api_sources.hpp"\n'
+if include not in source:
+    marker = '#include <algorithm>\n'
+    if source.count(marker) != 1:
+        raise SystemExit("Could not locate main.cpp include boundary")
+    source = source.replace(marker, marker + include, 1)
+
 # Provider state is shared with the existing refresh pipeline.
 if "static int g_apiSource" not in source:
     marker = 'static bool g_homeRefreshInProgress = false;\n'
@@ -111,18 +120,21 @@ static void bind_api_settings_actions(brls::View* root)
         raise SystemExit("Could not locate Home XML helper boundary")
     source = source.replace(marker, helper + marker, 1)
 
-# Bind immediately after HomeActivity creates the XML root. This avoids
-# TabFrame::getActiveTab() and avoids waiting for a later focus event.
-needle = '''        return brls::View::createFromXMLResource("activity/main.xml");'''
-replacement = '''        brls::View* root = brls::View::createFromXMLResource("activity/main.xml");
-        bind_api_settings_actions(root);
-        return root;'''
-if needle in source and "bind_api_settings_actions(root);" not in source:
-    source = source.replace(needle, replacement, 1)
+# The binder is defined later in this translation unit, so provide a forward
+# declaration before HomeActivity. This is required by C++ name lookup.
+if "static void bind_api_settings_actions(brls::View* root);" not in source:
+    marker = 'class HomeActivity : public brls::Activity\n'
+    declaration = 'static void bind_api_settings_actions(brls::View* root);\n\n'
+    if source.count(marker) != 1:
+        raise SystemExit("Could not locate HomeActivity declaration")
+    source = source.replace(marker, declaration + marker, 1)
+
+# Do not call the binder from HomeActivity: the API controls live inside the
+# lazily-created Settings tab, not HomeActivity's root view.
+source = source.replace('        bind_api_settings_actions(root);\n', '', 1)
 
 # Stable Settings section: provider controls are directly visible and there is
 # a separator before the rest of Settings. No separate API activity is needed.
-# Keep the existing separator outside the Tab; it is part of the stable XML.
 base_settings = '''    <brls:Separator />
     <brls:Tab label="Settings">
         <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
@@ -153,4 +165,4 @@ if 'id="api-source-aniwatch"' not in xml:
 
 xml_path.write_text(xml)
 source_path.write_text(source)
-print("API selector converted to direct Settings section")
+print("API selector patch made self-contained; Settings binder no longer targets Home root")
