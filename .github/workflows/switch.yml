@@ -118,15 +118,20 @@ jobs:
           python3 -m py_compile switch/tools/apply_api_selector.py
           python3 switch/tools/apply_api_selector.py
           grep -q 'g_apiSource' switch/source/main.cpp
-          grep -q 'AnimePahe' switch/source/main.cpp
-          grep -q 'Gogoanime' switch/source/main.cpp
-      - name: Validate API source Settings section
+          grep -q 'g_apiSourceRefreshPending' switch/source/main.cpp
+      - name: Keep Settings stock for crash isolation
         run: |
           set -eux
-          python3 -m py_compile switch/tools/apply_api_source_page.py
-          python3 switch/tools/apply_api_source_page.py
           test -f switch/romfs/xml/activity/main.xml
-          grep -q 'api-source-gogoanime' switch/romfs/xml/activity/main.xml
+          if grep -q 'api-source-current' switch/romfs/xml/activity/main.xml; then
+            echo 'Unexpected API selector XML present during stock Settings diagnostic'
+            exit 1
+          fi
+          grep -q '<brls:Tab label="Settings">' switch/romfs/xml/activity/main.xml
+          if grep -q 'ApiSourceActivity' switch/source/main.cpp; then
+            echo 'Unexpected legacy ApiSourceActivity present during stock Settings diagnostic'
+            exit 1
+          fi
       - name: Finalize API refresh globals
         run: |
           set -eux
