@@ -11,13 +11,15 @@ if "static brls::View* g_homeSidebarItem" not in source:
     if source.count(marker) != 1:
         raise SystemExit("Could not locate controller refresh global")
     source = source.replace(marker, addition, 1)
-
-# Track Home explicitly when the sidebar is discovered.
-if "g_homeSidebarItem = sidebarBox->getDefaultFocus();" not in source:
-    marker = '                g_activeSidebarItem = sidebarBox->getDefaultFocus();\n'
+elif "g_homeContentView" not in source:
+    marker = 'static bool g_refreshRequested = false;\n'
     if source.count(marker) != 1:
-        raise SystemExit("Could not locate sidebar default-focus initialization")
-    source = source.replace(marker, marker + '                g_homeSidebarItem = sidebarBox->getDefaultFocus();\n', 1)
+        raise SystemExit("Could not locate refresh global")
+    source = source.replace(marker, marker + 'static brls::View* g_homeContentView = nullptr;\n', 1)
+
+source = source.replace('            homeBox->setFocusable(true);\n', '', 1)
+source = source.replace('        homeBox->setFocusable(true);\n', '', 1)
+source = source.replace('        if (i == 0) brls::Application::giveFocus(card);\n', '', 1)
 
 # Update the sidebar active-event subscription without depending on the exact
 # formatting of the controller patch. A pending API-source refresh is consumed
@@ -30,15 +32,11 @@ if "g_apiSourceRefreshPending = false;" not in source:
     replacement = '''item->getActiveEvent()->subscribe([](brls::View* active) {
                                     g_activeSidebarItem = active;
                                 });'''
-    # Keep the base subscription simple; activation-aware refresh is handled
-    # centrally by the main loop using the actual Home content focus tree.
     source, count = pattern.subn(replacement, source, count=1)
     if count != 1:
         raise SystemExit("Could not locate sidebar active-event subscription")
 
 # Mark the dynamically installed Home content and keep a direct pointer to it.
-# Do not use a TabFrame getter: this Borealis revision intentionally exposes
-# setTabContent() but has no public getTabContent().
 if "g_homeContentView = homeContent;" not in source:
     marker = '                        homeContent = nullptr;\n'
     if source.count(marker) != 1:
@@ -58,9 +56,10 @@ if 'if (api.response.empty()) homeBox->setFocusable(true);' not in source:
 # The refresh helper replaces Home safely. The controller owns the in-progress
 # guard and updates g_homeContentView after a successful replacement.
 
-# Remove the old experimental TabFrame getter if an earlier generator pass left it behind.
+# This Borealis revision has no public getTabContent(). The pointer is captured
+# directly at the initial ownership handoff above and on each refresh.
 source = source.replace('    g_homeContentView = tabFrame ? tabFrame->getTabContent() : nullptr;\n', '', 1)
 source = source.replace('    log_stage("HOME FOCUS REFRESH CHECK INSTALLED");\n', '', 1)
 
 path.write_text(source)
-print("Home persistence now tracks the installed Home view directly and leaves refresh activation to the main loop")
+print("Home persistence tracks the installed Home view directly without using an unsupported TabFrame getter")
