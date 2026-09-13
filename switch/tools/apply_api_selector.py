@@ -120,13 +120,16 @@ if needle in source and "bind_api_settings_actions(root);" not in source:
 
 # Stable Settings section: provider controls are directly visible and there is
 # a separator before the rest of Settings. No separate API activity is needed.
-base_settings = '''    <brls:Tab label="Settings">
+# Keep the existing separator outside the Tab; it is part of the stable XML.
+base_settings = '''    <brls:Separator />
+    <brls:Tab label="Settings">
         <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
             <brls:Label width="auto" height="auto" text="Saikou Switch native port" marginTop="20" />
         </brls:Box>
     </brls:Tab>'''
-selector_settings = '''    <brls:Tab label="Settings">
+selector_settings = '''    <brls:Separator />
+    <brls:Tab label="Settings">
         <brls:Box width="auto" height="auto" axis="column" paddingTop="40" paddingLeft="50" paddingRight="50">
             <brls:Label width="auto" height="auto" text="Settings" fontSize="36" />
             <brls:Label id="api-source-current" width="auto" height="auto" text="Anime API: Miruro" marginTop="20" />
