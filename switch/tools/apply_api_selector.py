@@ -9,7 +9,9 @@ xml = xml_path.read_text()
 # Provider state is shared with the existing refresh pipeline.
 if "static int g_apiSource" not in source:
     marker = 'static bool g_homeRefreshInProgress = false;\n'
-    addition = marker + '''static int g_apiSource = 0; // 0=Miruro, 1=AnimePahe, 2=Gogoanime, 3=Aniwatch, 4=HiAnime\n'''
+    addition = marker + '''static int g_apiSource = 0; // 0=Miruro, 1=AnimePahe, 2=Gogoanime, 3=Aniwatch, 4=HiAnime
+static bool g_apiSourceRefreshPending = false;
+'''
     if source.count(marker) != 1:
         raise SystemExit("Could not locate Home persistence globals")
     source = source.replace(marker, addition, 1)
